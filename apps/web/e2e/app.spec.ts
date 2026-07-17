@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { encodeFunctionResult } from 'viem'
-import { erc20ReadAbi } from '../src/erc20Abi'
-import { KAIROS_NETWORK } from '../src/kairos'
-import { approvedJpycToken } from '../src/tokenRegistry'
+import { KAIROS_NETWORK } from '../src/blockchain/kairos'
+import { erc20ReadAbi } from '../src/tokens/erc20Abi'
+import { approvedJpycToken } from '../src/tokens/tokenRegistry'
 
 const rpcUrlPattern = new RegExp(
   `^${KAIROS_NETWORK.rpcUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/?$`,

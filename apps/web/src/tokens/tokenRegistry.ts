@@ -1,6 +1,9 @@
 import type { Address } from 'viem'
-import { InvalidAddressError, normalizeEvmAddress } from './address'
-import { KAIROS_NETWORK } from './kairos'
+import {
+  InvalidAddressError,
+  normalizeEvmAddress,
+} from '../blockchain/address'
+import { KAIROS_NETWORK } from '../blockchain/kairos'
 
 export interface Erc20TokenConfiguration {
   readonly id: string

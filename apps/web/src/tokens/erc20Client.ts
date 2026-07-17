@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 import { erc20ReadAbi } from './erc20Abi'
-import { kairosPublicClient } from './kairosClient'
+import { kairosPublicClient } from '../blockchain/kairosClient'
 
 export interface Erc20ReadClient {
   getBytecode(contractAddress: Address): Promise<Hex | undefined>
@@ -32,4 +32,3 @@ export const kairosErc20ReadClient: Erc20ReadClient = {
       args: [ownerAddress],
     }),
 }
-

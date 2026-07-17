@@ -1,10 +1,10 @@
 import type { Address } from 'viem'
-import { normalizeEvmAddress } from './address'
+import { normalizeEvmAddress } from '../blockchain/address'
 import { kairosErc20ReadClient, type Erc20ReadClient } from './erc20Client'
 import {
   isKairosRpcTransportError,
   toKairosRpcError,
-} from './kairosRpcError'
+} from '../blockchain/kairosRpcError'
 import { formatErc20Balance } from './tokenFormatting'
 import {
   validateErc20Token,
@@ -59,4 +59,3 @@ export async function getErc20TokenBalance(
     ...metadata,
   }
 }
-

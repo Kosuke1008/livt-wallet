@@ -12,7 +12,7 @@ import {
   TokenSymbolMismatchError,
   validateErc20Token,
 } from './tokenMetadata'
-import { KairosRpcError } from './kairosRpcError'
+import { KairosRpcError } from '../blockchain/kairosRpcError'
 import { approvedJpycToken } from './tokenRegistry'
 
 const owner = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'

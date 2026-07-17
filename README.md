@@ -51,3 +51,10 @@ corepack pnpm dev
 - `apps/web`: Web アプリケーション
 - `packages`: 共有パッケージ用
 - `docs`: ドキュメント
+
+`apps/web/src` の構成:
+
+- `app`: アプリケーションのentry point、UI、スタイル
+- `wallet`: ウォレット生成、暗号化、保存、unlock
+- `blockchain`: Kairos RPC接続とnative KAIA読み取り
+- `tokens`: 承認token設定、検証、残高読み取り、表示format

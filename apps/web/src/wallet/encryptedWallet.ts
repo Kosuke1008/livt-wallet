@@ -1,6 +1,6 @@
 import type { Address } from 'viem'
 import { z } from 'zod'
-import { evmAddressSchema } from './address'
+import { evmAddressSchema } from '../blockchain/address'
 import { createWallet, recoverAddress } from './wallet'
 
 const STORAGE_KEY = 'livt-wallet:encrypted-wallet'

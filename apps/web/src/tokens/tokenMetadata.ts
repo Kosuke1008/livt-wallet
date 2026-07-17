@@ -3,7 +3,7 @@ import { kairosErc20ReadClient, type Erc20ReadClient } from './erc20Client'
 import {
   isKairosRpcTransportError,
   toKairosRpcError,
-} from './kairosRpcError'
+} from '../blockchain/kairosRpcError'
 import {
   defineApprovedToken,
   type Erc20TokenConfiguration,
@@ -93,4 +93,3 @@ export async function validateErc20Token(
   }
   return readTokenMetadata(validatedToken, client)
 }
-

@@ -1,26 +1,26 @@
 import { useState } from 'react'
 import type { Address } from 'viem'
-import { getActiveNetwork } from './activeNetwork'
+import { getActiveNetwork } from '../blockchain/activeNetwork'
 import {
   type Erc20BalanceResult,
   getErc20TokenBalance,
-} from './tokenBalance'
+} from '../tokens/tokenBalance'
 import {
   InvalidTokenContractError,
   TokenMetadataError,
-} from './tokenMetadata'
+} from '../tokens/tokenMetadata'
 import {
   createAndSaveWallet,
   hasEncryptedWallet,
   IncorrectPasswordError,
   unlockStoredWalletAddress,
-} from './encryptedWallet'
+} from '../wallet/encryptedWallet'
 import {
   formatKairosBalance,
   getKairosNativeBalance,
   KairosRpcError,
-} from './kairosBalance'
-import { approvedJpycToken } from './tokenRegistry'
+} from '../blockchain/kairosBalance'
+import { approvedJpycToken } from '../tokens/tokenRegistry'
 
 const activeNetwork = getActiveNetwork()
 

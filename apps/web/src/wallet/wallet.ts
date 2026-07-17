@@ -5,7 +5,10 @@ import {
   generateMnemonic,
   mnemonicToAccount,
 } from 'viem/accounts'
-import { isValidEvmAddress, normalizeEvmAddress } from './address'
+import {
+  isValidEvmAddress,
+  normalizeEvmAddress,
+} from '../blockchain/address'
 
 export interface GeneratedWallet {
   readonly mnemonic: string

@@ -8,8 +8,11 @@ import {
   TokenDecimalsMismatchError,
   TokenSymbolMismatchError,
 } from './tokenMetadata'
-import { getKairosNativeBalance, type NativeBalanceClient } from './kairosBalance'
-import { KairosRpcError } from './kairosRpcError'
+import {
+  getKairosNativeBalance,
+  type NativeBalanceClient,
+} from '../blockchain/kairosBalance'
+import { KairosRpcError } from '../blockchain/kairosRpcError'
 import { approvedJpycToken } from './tokenRegistry'
 
 const localWallet = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
