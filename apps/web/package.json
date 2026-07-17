@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
+    "@scure/bip39": "^1.6.0",
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",

@@ -10,6 +10,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@scure/bip39':
+        specifier: ^1.6.0
+        version: 1.6.0
       '@vitejs/plugin-react':
         specifier: latest
         version: 6.0.3(vite@8.1.5(@types/node@26.1.1))

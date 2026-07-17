@@ -66,9 +66,54 @@ h1 {
   line-height: 1.8;
 }
 
+button {
+  width: 100%;
+  margin-top: 28px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 14px;
+  color: #052e22;
+  background: #6ee7b7;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #a7f3d0;
+}
+
+button:focus-visible {
+  outline: 3px solid #ecfdf5;
+  outline-offset: 3px;
+}
+
+.address-panel {
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid rgb(110 231 183 / 25%);
+  border-radius: 14px;
+  background: rgb(0 0 0 / 20%);
+}
+
+.address-panel span {
+  display: block;
+  margin-bottom: 8px;
+  color: #a7bdb4;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.address-panel output {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #ecfdf5;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  line-height: 1.5;
+}
+
 @media (max-width: 520px) {
   .card {
     padding: 36px 28px;
   }
 }
-
