@@ -58,3 +58,10 @@ corepack pnpm dev
 - `wallet`: ウォレット生成、暗号化、保存、unlock
 - `blockchain`: Kairos RPC接続とnative KAIA読み取り
 - `tokens`: 承認token設定、検証、残高読み取り、表示format
+
+テストの構成:
+
+- `src`: production application code
+- `tests/unit`: 独立した関数とcomponentのテスト
+- `tests/integration`: 複数moduleとmock RPC境界を通すテスト
+- `e2e`: browser levelのPlaywrightテスト

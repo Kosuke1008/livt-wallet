@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getActiveNetwork } from './activeNetwork'
+import { getActiveNetwork } from '../../../src/blockchain/activeNetwork'
 import {
   getKairosNativeBalance,
   KairosRpcError,
   type NativeBalanceClient,
-} from './kairosBalance'
+} from '../../../src/blockchain/kairosBalance'
 
 const address = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
 
@@ -35,4 +35,3 @@ describe('Kairos network integration', () => {
     expect(getActiveNetwork().id).toBe(1001)
   })
 })
-

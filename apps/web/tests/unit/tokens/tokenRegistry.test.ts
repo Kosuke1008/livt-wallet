@@ -6,7 +6,7 @@ import {
   defineApprovedToken,
   InvalidTokenContractAddressError,
   UnsupportedTokenChainError,
-} from './tokenRegistry'
+} from '../../../src/tokens/tokenRegistry'
 
 describe('approved token registry', () => {
   it('Kairos JPYCだけをchecksum正規化して登録する', () => {

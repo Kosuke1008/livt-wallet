@@ -7,8 +7,8 @@
     "dev": "vite",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude '**/*.integration.test.{ts,tsx}'",
-    "test:integration": "vitest run src/wallet/encryptedWallet.integration.test.ts src/blockchain/kairosNetwork.integration.test.ts src/tokens/jpyc.integration.test.ts",
+    "test": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
     "build": "tsc -b && vite build"
   },

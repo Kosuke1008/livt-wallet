@@ -3,7 +3,7 @@ import {
   getActiveNetwork,
   selectActiveNetwork,
   UnsupportedChainError,
-} from './activeNetwork'
+} from '../../../src/blockchain/activeNetwork'
 
 describe('active network', () => {
   it('常にKaia Kairosへ解決する', () => {
@@ -16,4 +16,3 @@ describe('active network', () => {
     expect(() => selectActiveNetwork(8217)).toThrow(UnsupportedChainError)
   })
 })
-

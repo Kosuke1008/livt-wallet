@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { kairosChain, KAIROS_NETWORK } from './kairos'
+import { kairosChain, KAIROS_NETWORK } from '../../../src/blockchain/kairos'
 
 describe('Kaia Kairos chain', () => {
   it('chain IDが正確に1001である', () => {

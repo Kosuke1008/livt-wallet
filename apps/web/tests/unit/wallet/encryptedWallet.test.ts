@@ -6,8 +6,8 @@ import {
   encryptMnemonic,
   IncorrectPasswordError,
   InvalidStoredWalletError,
-} from './encryptedWallet'
-import { recoverAddress } from './wallet'
+} from '../../../src/wallet/encryptedWallet'
+import { recoverAddress } from '../../../src/wallet/wallet'
 
 const mnemonic = 'test test test test test test test test test test test junk'
 

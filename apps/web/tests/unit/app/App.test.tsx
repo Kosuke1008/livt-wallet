@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { App } from './App'
+import { App } from '../../../src/app/App'
 
 describe('App', () => {
   it('ウォレット作成ボタンを表示する', () => {

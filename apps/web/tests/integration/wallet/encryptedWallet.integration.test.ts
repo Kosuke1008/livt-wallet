@@ -5,7 +5,7 @@ import {
   InvalidStoredWalletError,
   loadEncryptedWallet,
   unlockStoredWalletAddress,
-} from './encryptedWallet'
+} from '../../../src/wallet/encryptedWallet'
 
 class MemoryStorage implements Pick<Storage, 'getItem' | 'setItem'> {
   private readonly values = new Map<string, string>()
@@ -47,4 +47,3 @@ describe('encrypted wallet storage', () => {
     expect(() => loadEncryptedWallet(storage)).toThrow(InvalidStoredWalletError)
   })
 })
-

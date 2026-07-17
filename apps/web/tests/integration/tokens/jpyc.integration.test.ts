@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Erc20ReadClient } from './erc20Client'
+import type { Erc20ReadClient } from '../../../src/tokens/erc20Client'
 import {
   getErc20TokenBalance,
-} from './tokenBalance'
+} from '../../../src/tokens/tokenBalance'
 import {
   InvalidTokenContractError,
   TokenDecimalsMismatchError,
   TokenSymbolMismatchError,
-} from './tokenMetadata'
+} from '../../../src/tokens/tokenMetadata'
 import {
   getKairosNativeBalance,
   type NativeBalanceClient,
-} from '../blockchain/kairosBalance'
-import { KairosRpcError } from '../blockchain/kairosRpcError'
-import { approvedJpycToken } from './tokenRegistry'
+} from '../../../src/blockchain/kairosBalance'
+import { KairosRpcError } from '../../../src/blockchain/kairosRpcError'
+import { approvedJpycToken } from '../../../src/tokens/tokenRegistry'
 
 const localWallet = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
 const fundedPublicAddress = '0x65B66fdeD7b7Ff2ab328De9E6964c79aDCd95Ac0'

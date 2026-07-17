@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Erc20ReadClient } from './erc20Client'
+import type { Erc20ReadClient } from '../../../src/tokens/erc20Client'
 import {
   getErc20TokenBalance,
   TokenBalanceError,
-} from './tokenBalance'
-import { formatErc20Balance } from './tokenFormatting'
+} from '../../../src/tokens/tokenBalance'
+import { formatErc20Balance } from '../../../src/tokens/tokenFormatting'
 import {
   InvalidTokenContractError,
   TokenDecimalsMismatchError,
   TokenMetadataError,
   TokenSymbolMismatchError,
   validateErc20Token,
-} from './tokenMetadata'
-import { KairosRpcError } from '../blockchain/kairosRpcError'
-import { approvedJpycToken } from './tokenRegistry'
+} from '../../../src/tokens/tokenMetadata'
+import { KairosRpcError } from '../../../src/blockchain/kairosRpcError'
+import { approvedJpycToken } from '../../../src/tokens/tokenRegistry'
 
 const owner = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
 

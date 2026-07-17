@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { InvalidAddressError, normalizeEvmAddress } from './address'
+import {
+  InvalidAddressError,
+  normalizeEvmAddress,
+} from '../../../src/blockchain/address'
 
 describe('EVM address validation', () => {
   it('有効なアドレスをchecksum形式に正規化する', () => {
@@ -12,4 +15,3 @@ describe('EVM address validation', () => {
     expect(() => normalizeEvmAddress('0x1234')).toThrow(InvalidAddressError)
   })
 })
-

@@ -6,7 +6,7 @@ import {
   InvalidMnemonicError,
   isValidWalletAddress,
   recoverAddress,
-} from './wallet'
+} from '../../../src/wallet/wallet'
 
 const knownMnemonic =
   'test test test test test test test test test test test junk'
