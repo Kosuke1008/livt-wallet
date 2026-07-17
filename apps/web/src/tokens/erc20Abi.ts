@@ -6,3 +6,6 @@ export const erc20ReadAbi = parseAbi([
   'function symbol() view returns (string)',
 ])
 
+export const erc20TransferAbi = parseAbi([
+  'function transfer(address recipient, uint256 amount) returns (bool)',
+])

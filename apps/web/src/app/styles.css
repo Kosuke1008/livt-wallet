@@ -27,7 +27,7 @@ body {
 }
 
 .card {
-  width: min(100%, 560px);
+  width: min(100%, 760px);
   padding: 56px;
   border: 1px solid rgb(167 243 208 / 18%);
   border-radius: 28px;
@@ -168,8 +168,118 @@ button:focus-visible {
   margin-top: 8px;
 }
 
+.transfer-panel {
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid rgb(110 231 183 / 18%);
+}
+
+.transfer-panel h2,
+.transaction-result h3 {
+  margin: 0 0 12px;
+  letter-spacing: -0.02em;
+}
+
+.transfer-panel > p {
+  color: #a7bdb4;
+  line-height: 1.6;
+}
+
+.transfer-panel label:not(:first-child) {
+  margin-top: 18px;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+button.secondary {
+  border: 1px solid rgb(167 243 208 / 30%);
+  color: #a7f3d0;
+  background: transparent;
+}
+
+button.secondary:hover {
+  background: rgb(16 185 129 / 12%);
+}
+
+.transaction-details {
+  display: grid;
+  gap: 0;
+  margin: 20px 0;
+  border: 1px solid rgb(110 231 183 / 20%);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.transaction-details div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(0, 1.3fr);
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgb(110 231 183 / 14%);
+}
+
+.transaction-details div:last-child {
+  border-bottom: 0;
+}
+
+.transaction-details dt {
+  color: #a7bdb4;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.transaction-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: right;
+}
+
+.warning {
+  padding: 12px 14px;
+  border: 1px solid rgb(251 191 36 / 28%);
+  border-radius: 10px;
+  color: #fde68a !important;
+  background: rgb(120 53 15 / 18%);
+}
+
+.transaction-result {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid rgb(110 231 183 / 25%);
+  border-radius: 12px;
+  background: rgb(0 0 0 / 18%);
+}
+
+.transaction-result p {
+  line-height: 1.6;
+}
+
+.transaction-result .hash {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.transaction-result a {
+  color: #6ee7b7;
+  font-weight: 700;
+}
+
 @media (max-width: 520px) {
   .card {
     padding: 36px 28px;
+  }
+
+  .button-row,
+  .transaction-details div {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-details dd {
+    text-align: left;
   }
 }

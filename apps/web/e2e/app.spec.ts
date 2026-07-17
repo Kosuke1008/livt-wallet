@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
-import { encodeFunctionResult } from 'viem'
+import { encodeFunctionResult, keccak256, type Hash, type Hex } from 'viem'
 import { KAIROS_NETWORK } from '../src/blockchain/kairos'
-import { erc20ReadAbi } from '../src/tokens/erc20Abi'
+import { erc20ReadAbi, erc20TransferAbi } from '../src/tokens/erc20Abi'
 import { approvedJpycToken } from '../src/tokens/tokenRegistry'
 
 const rpcUrlPattern = new RegExp(
@@ -11,27 +11,59 @@ const rpcUrlPattern = new RegExp(
 interface MockKairosRpcOptions {
   nativeBalance?: bigint
   tokenBalance?: bigint
+  refreshedNativeBalance?: bigint
+  refreshedTokenBalance?: bigint
   failNative?: boolean
   failToken?: boolean
+  chainId?: number
+  simulationFails?: boolean
+  receiptStatus?: 'success' | 'reverted'
+}
+
+interface MockKairosRpcState {
+  chainChecks: number
+  simulations: number
+  broadcasts: number
+  receiptReads: number
+  nativeBalanceReads: number
+  tokenBalanceReads: number
+  transactionHash: Hash | null
 }
 
 async function mockKairosRpc(
   page: Page,
   options: MockKairosRpcOptions = {},
-) {
+): Promise<MockKairosRpcState> {
   const {
     nativeBalance = 1_000_000_000_000_000_000n,
     tokenBalance = 9_000_000_000_000_000_000_000n,
+    refreshedNativeBalance = 999_000_000_000_000_000n,
+    refreshedTokenBalance = 8_999_000_000_000_000_000_000n,
     failNative = false,
     failToken = false,
+    chainId = 1001,
+    simulationFails = false,
+    receiptStatus = 'success',
   } = options
+  const state: MockKairosRpcState = {
+    chainChecks: 0,
+    simulations: 0,
+    broadcasts: 0,
+    receiptReads: 0,
+    nativeBalanceReads: 0,
+    tokenBalanceReads: 0,
+    transactionHash: null,
+  }
+  const transactionSender = '0x0000000000000000000000000000000000000001'
+  let transferConfirmed = false
 
   await page.route(rpcUrlPattern, async (route) => {
     const request = route.request().postDataJSON() as {
       id: number
       method: string
-      params: readonly unknown[]
+      params?: readonly unknown[]
     }
+    const params = request.params ?? []
     if (request.method === 'eth_getBalance' && failNative) {
       await route.abort('connectionfailed')
       return
@@ -41,16 +73,21 @@ async function mockKairosRpc(
       return
     }
 
-    let result: string
+    let result: unknown
     if (request.method === 'eth_getBalance') {
-      result = `0x${nativeBalance.toString(16)}`
+      const balance = transferConfirmed ? refreshedNativeBalance : nativeBalance
+      state.nativeBalanceReads += 1
+      result = `0x${balance.toString(16)}`
+    } else if (request.method === 'eth_chainId') {
+      state.chainChecks += 1
+      result = `0x${chainId.toString(16)}`
     } else if (request.method === 'eth_getCode') {
-      expect(String(request.params[0]).toLowerCase()).toBe(
+      expect(String(params[0]).toLowerCase()).toBe(
         approvedJpycToken.contractAddress.toLowerCase(),
       )
       result = '0x6000'
     } else if (request.method === 'eth_call') {
-      const call = request.params[0] as { data: string; to: string }
+      const call = params[0] as { data: string; from?: string; to: string }
       expect(call.to.toLowerCase()).toBe(
         approvedJpycToken.contractAddress.toLowerCase(),
       )
@@ -66,13 +103,68 @@ async function mockKairosRpc(
           functionName: 'decimals',
           result: 18,
         })
-      } else {
-        expect(call.data.startsWith('0x70a08231')).toBe(true)
+      } else if (call.data.startsWith('0x70a08231')) {
+        const balance = transferConfirmed ? refreshedTokenBalance : tokenBalance
+        state.tokenBalanceReads += 1
         result = encodeFunctionResult({
           abi: erc20ReadAbi,
           functionName: 'balanceOf',
-          result: tokenBalance,
+          result: balance,
         })
+      } else {
+        expect(call.data.startsWith('0xa9059cbb')).toBe(true)
+        state.simulations += 1
+        if (simulationFails) {
+          await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: request.id,
+              error: { code: 3, message: 'execution reverted' },
+            }),
+          })
+          return
+        }
+        result = encodeFunctionResult({
+          abi: erc20TransferAbi,
+          functionName: 'transfer',
+          result: true,
+        })
+      }
+    } else if (request.method === 'eth_estimateGas') {
+      result = '0xea60'
+    } else if (request.method === 'eth_gasPrice') {
+      result = '0x5d21dba00'
+    } else if (request.method === 'eth_getTransactionCount') {
+      expect(params[1]).toBe('pending')
+      result = '0x0'
+    } else if (request.method === 'eth_sendRawTransaction') {
+      state.broadcasts += 1
+      const serializedTransaction = params[0] as Hex
+      state.transactionHash = keccak256(serializedTransaction)
+      const input = params[0]
+      expect(typeof input).toBe('string')
+      result = state.transactionHash
+    } else if (request.method === 'eth_getTransactionReceipt') {
+      state.receiptReads += 1
+      const transactionHash = params[0] as Hash
+      expect(transactionHash).toBe(state.transactionHash)
+      transferConfirmed = receiptStatus === 'success'
+      result = {
+        blockHash: `0x${'1'.repeat(64)}`,
+        blockNumber: '0x1',
+        contractAddress: null,
+        cumulativeGasUsed: '0xea60',
+        effectiveGasPrice: '0x5d21dba00',
+        from: transactionSender,
+        gasUsed: '0xea60',
+        logs: [],
+        logsBloom: `0x${'0'.repeat(512)}`,
+        status: receiptStatus === 'success' ? '0x1' : '0x0',
+        to: approvedJpycToken.contractAddress,
+        transactionHash,
+        transactionIndex: '0x0',
+        type: '0x0',
       }
     } else {
       throw new Error(`Unexpected RPC method: ${request.method}`)
@@ -87,6 +179,35 @@ async function mockKairosRpc(
       }),
     })
   })
+  return state
+}
+
+const transferPassword = 'e2e-transfer-password'
+const transferRecipient = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
+
+async function createAndUnlockWallet(page: Page): Promise<string> {
+  await page.goto('/')
+  await page.getByLabel('パスワード').fill(transferPassword)
+  await page
+    .getByRole('button', { name: 'ウォレットを作成して暗号化' })
+    .click()
+  await expect(page.getByLabel('JPYC残高値')).toBeVisible()
+  return (await page.getByLabel('ウォレットアドレス値').textContent()) ?? ''
+}
+
+async function openTransferReview(
+  page: Page,
+  recipient = transferRecipient,
+  amount = '1',
+): Promise<void> {
+  await page.getByLabel('送り先アドレス').fill(recipient)
+  await page.getByLabel('送るJPYCの数量').fill(amount)
+  await page.getByRole('button', { name: '内容を確認' }).click()
+}
+
+async function confirmTransfer(page: Page): Promise<void> {
+  await page.getByLabel('送金確認用パスワード').fill(transferPassword)
+  await page.getByRole('button', { name: '確認して送る' }).click()
 }
 
 test('暗号化して保存し、再読み込み後に復号できる', async ({ page }) => {
@@ -171,4 +292,131 @@ test('JPYC RPC障害をnative KAIAと独立して再試行表示する', async (
   await expect(page.getByRole('button', { name: 'JPYCを再試行' })).toBeVisible()
   await expect(page.locator('input[type="text"]')).toHaveCount(0)
   await expect(page.getByText(/Mainnet/i)).toHaveCount(0)
+})
+
+test('手動JPYC送金を確認後に一度だけ送信し成功後の残高を更新する', async ({
+  page,
+}) => {
+  const rpc = await mockKairosRpc(page)
+  const sender = await createAndUnlockWallet(page)
+
+  await openTransferReview(page, transferRecipient.toLowerCase(), '1.2500')
+  const review = page.getByRole('region', { name: 'JPYC送金内容' })
+  await expect(review).toBeVisible()
+  await expect(review.getByText(KAIROS_NETWORK.name, { exact: true })).toBeVisible()
+  await expect(review.getByText('1001', { exact: true })).toBeVisible()
+  await expect(review.getByText(approvedJpycToken.contractAddress)).toBeVisible()
+  await expect(review.getByText(sender, { exact: true })).toBeVisible()
+  await expect(review.getByText(transferRecipient, { exact: true })).toBeVisible()
+  await expect(review.getByText('1.2500 JPYC', { exact: true })).toBeVisible()
+  await expect(review.getByText('1.25 JPYC', { exact: true })).toBeVisible()
+
+  await confirmTransfer(page)
+
+  await expect(page.getByRole('heading', { name: '送金が確定しました' })).toBeVisible()
+  await expect(page.getByText('状態: 確定済み')).toBeVisible()
+  const explorerLink = page.getByRole('link', { name: 'Kaiascanで確認' })
+  await expect(explorerLink).toHaveAttribute(
+    'href',
+    `${KAIROS_NETWORK.blockExplorerUrl}/tx/${rpc.transactionHash}`,
+  )
+  await expect(page.getByLabel('KAIA残高値')).toHaveText('0.999 KAIA')
+  await expect(page.getByLabel('JPYC残高値')).toHaveText('8999 JPYC')
+  expect(rpc.broadcasts).toBe(1)
+  expect(rpc.receiptReads).toBe(1)
+  expect(rpc.nativeBalanceReads).toBeGreaterThanOrEqual(3)
+  expect(rpc.tokenBalanceReads).toBe(2)
+})
+
+test('不正な送り先を確認画面へ進めずtransaction RPCを呼ばない', async ({
+  page,
+}) => {
+  const rpc = await mockKairosRpc(page)
+  await createAndUnlockWallet(page)
+
+  await openTransferReview(page, '0x1234', '1')
+
+  await expect(page.getByRole('alert')).toHaveText(
+    '正しいEVMアドレスを入力してください。',
+  )
+  await expect(page.getByRole('heading', { name: 'JPYC送金内容' })).toHaveCount(0)
+  expect(rpc.chainChecks).toBe(0)
+  expect(rpc.simulations).toBe(0)
+  expect(rpc.broadcasts).toBe(0)
+})
+
+test('数量0を確認画面へ進めずtransaction RPCを呼ばない', async ({ page }) => {
+  const rpc = await mockKairosRpc(page)
+  await createAndUnlockWallet(page)
+
+  await openTransferReview(page, transferRecipient, '0')
+
+  await expect(page.getByRole('alert')).toHaveText(
+    '0より大きい数量を入力してください。',
+  )
+  await expect(page.getByRole('heading', { name: 'JPYC送金内容' })).toHaveCount(0)
+  expect(rpc.chainChecks).toBe(0)
+  expect(rpc.simulations).toBe(0)
+  expect(rpc.broadcasts).toBe(0)
+})
+
+test('wrong chainではsimulation、signing、broadcast前に停止する', async ({ page }) => {
+  const rpc = await mockKairosRpc(page, { chainId: 8217 })
+  await createAndUnlockWallet(page)
+  await openTransferReview(page)
+  await confirmTransfer(page)
+
+  await expect(page.getByRole('alert')).toHaveText(
+    '接続先がKaia Kairos（番号1001）ではないため送信を止めました。',
+  )
+  expect(rpc.chainChecks).toBe(1)
+  expect(rpc.simulations).toBe(0)
+  expect(rpc.broadcasts).toBe(0)
+})
+
+test('simulation失敗ではbroadcastせず制御されたmessageを表示する', async ({
+  page,
+}) => {
+  const rpc = await mockKairosRpc(page, { simulationFails: true })
+  await createAndUnlockWallet(page)
+  await openTransferReview(page)
+  await confirmTransfer(page)
+
+  await expect(page.getByRole('alert')).toHaveText(
+    'JPYC送金の事前実行に失敗しました。残高と送り先を確認してください。',
+  )
+  expect(rpc.simulations).toBe(1)
+  expect(rpc.broadcasts).toBe(0)
+})
+
+test('reverted receiptを成功表示せず自動再送しない', async ({ page }) => {
+  const rpc = await mockKairosRpc(page, { receiptStatus: 'reverted' })
+  await createAndUnlockWallet(page)
+  await openTransferReview(page)
+  await confirmTransfer(page)
+
+  await expect(
+    page.getByRole('heading', { name: '送金処理は取り消されました' }),
+  ).toBeVisible()
+  await expect(page.getByText('状態: 取り消し')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '送金が確定しました' })).toHaveCount(0)
+  expect(rpc.broadcasts).toBe(1)
+  expect(rpc.receiptReads).toBe(1)
+  expect(rpc.tokenBalanceReads).toBe(1)
+})
+
+test('確認buttonの連続操作でもbroadcastは一度だけ', async ({ page }) => {
+  const rpc = await mockKairosRpc(page)
+  await createAndUnlockWallet(page)
+  await openTransferReview(page)
+  await page.getByLabel('送金確認用パスワード').fill(transferPassword)
+
+  await page.getByRole('button', { name: '確認して送る' }).evaluate((button) => {
+    const confirmationButton = button as HTMLButtonElement
+    confirmationButton.click()
+    confirmationButton.click()
+  })
+
+  await expect(page.getByRole('heading', { name: '送金が確定しました' })).toBeVisible()
+  expect(rpc.broadcasts).toBe(1)
 })

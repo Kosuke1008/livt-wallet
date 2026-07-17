@@ -29,7 +29,7 @@ export const encryptedWalletSchema = z
 
 export type EncryptedWallet = z.infer<typeof encryptedWalletSchema>
 
-type WalletStorage = Pick<Storage, 'getItem' | 'setItem'>
+export type WalletStorage = Pick<Storage, 'getItem' | 'setItem'>
 
 export class InvalidPasswordError extends Error {
   readonly name = 'InvalidPasswordError'

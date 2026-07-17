@@ -37,6 +37,14 @@ export class InvalidTokenContractAddressError extends Error {
   }
 }
 
+export class UnsupportedTokenError extends Error {
+  readonly name = 'UnsupportedTokenError'
+
+  constructor(tokenId: string) {
+    super(`Unsupported token ID: ${tokenId}`)
+  }
+}
+
 export function defineApprovedToken(
   input: Erc20TokenConfigurationInput,
 ): Erc20TokenConfiguration {
@@ -54,7 +62,7 @@ export function defineApprovedToken(
   }
 }
 
-export const approvedTokens = [
+export const approvedJpycToken = Object.freeze(
   defineApprovedToken({
     id: 'jpyc',
     chainId: KAIROS_NETWORK.chainId,
@@ -63,6 +71,14 @@ export const approvedTokens = [
     expectedSymbol: 'JPYC',
     expectedDecimals: 18,
   }),
-] as const
+)
 
-export const approvedJpycToken = approvedTokens[0]
+export const approvedTokens = Object.freeze([approvedJpycToken] as const)
+
+export type ApprovedTokenId = (typeof approvedTokens)[number]['id']
+
+export function resolveApprovedToken(tokenId: string): Erc20TokenConfiguration {
+  const token = approvedTokens.find((candidate) => candidate.id === tokenId)
+  if (token === undefined) throw new UnsupportedTokenError(tokenId)
+  return token
+}
