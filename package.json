@@ -1,0 +1,14 @@
+{
+  "name": "livt-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.13.1",
+  "scripts": {
+    "dev": "corepack pnpm --filter @livt-wallet/web dev",
+    "lint": "corepack pnpm --filter @livt-wallet/web lint",
+    "typecheck": "corepack pnpm --filter @livt-wallet/web typecheck",
+    "test": "corepack pnpm --filter @livt-wallet/web test",
+    "test:integration": "corepack pnpm --filter @livt-wallet/web test:integration",
+    "build": "corepack pnpm --filter @livt-wallet/web build"
+  }
+}
