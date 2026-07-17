@@ -6,8 +6,9 @@ describe('App', () => {
   it('ウォレット作成ボタンを表示する', () => {
     const markup = renderToStaticMarkup(<App />)
 
-    expect(markup).toContain('Wallet')
+    expect(markup).toContain('LivT Wallet')
     expect(markup).toContain('ウォレットを作成して暗号化')
     expect(markup).toContain('type="password"')
+    expect(markup).not.toContain('JPYC残高')
   })
 })

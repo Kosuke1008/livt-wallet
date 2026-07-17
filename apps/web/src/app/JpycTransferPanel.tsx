@@ -41,6 +41,7 @@ interface JpycTransferPanelProps {
   readonly jpycDecimals: number
   readonly hasNativeBalance: boolean
   readonly onConfirmed: () => Promise<void>
+  readonly onBack: () => void
 }
 
 export function JpycTransferPanel({
@@ -49,6 +50,7 @@ export function JpycTransferPanel({
   jpycDecimals,
   hasNativeBalance,
   onConfirmed,
+  onBack,
 }: JpycTransferPanelProps) {
   const [recipientInput, setRecipientInput] = useState('')
   const [amountInput, setAmountInput] = useState('')
@@ -221,9 +223,23 @@ export function JpycTransferPanel({
     setEstimatedGas(null)
   }
 
+  const handleBackToWallet = () => {
+    if (isProcessing(state.status)) return
+    setConfirmationPassword('')
+    onBack()
+  }
+
   if (state.status === 'editing') {
     return (
       <section className="transfer-panel" aria-labelledby="transfer-title">
+        <button
+          type="button"
+          className="back-button secondary"
+          aria-label="Back to wallet"
+          onClick={handleBackToWallet}
+        >
+          ← ウォレットへ戻る
+        </button>
         <h2 id="transfer-title">JPYCを送る</h2>
         <p>Kaia Kairos上の承認済みJPYCだけを送金します。</p>
         <form onSubmit={handleReview}>
@@ -274,6 +290,16 @@ export function JpycTransferPanel({
 
   return (
     <section className="transfer-panel" aria-labelledby="transfer-title">
+      {!isProcessing(state.status) && (
+        <button
+          type="button"
+          className="back-button secondary"
+          aria-label="Back to wallet"
+          onClick={handleBackToWallet}
+        >
+          ← ウォレットへ戻る
+        </button>
+      )}
       <h2 id="transfer-title">JPYC送金内容</h2>
       <dl className="transaction-details">
         <div><dt>接続先</dt><dd>{KAIROS_NETWORK.name}</dd></div>

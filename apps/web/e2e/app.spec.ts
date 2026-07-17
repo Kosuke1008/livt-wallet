@@ -192,7 +192,12 @@ async function createAndUnlockWallet(page: Page): Promise<string> {
     .getByRole('button', { name: 'ウォレットを作成して暗号化' })
     .click()
   await expect(page.getByLabel('JPYC残高値')).toBeVisible()
-  return (await page.getByLabel('ウォレットアドレス値').textContent()) ?? ''
+  const addressOutput = page.getByLabel('ウォレットアドレス値')
+  return (
+    (await addressOutput.getAttribute('title')) ??
+    (await addressOutput.textContent()) ??
+    ''
+  )
 }
 
 async function openTransferReview(
@@ -200,6 +205,7 @@ async function openTransferReview(
   recipient = transferRecipient,
   amount = '1',
 ): Promise<void> {
+  await page.getByRole('button', { name: 'Send JPYC' }).click()
   await page.getByLabel('送り先アドレス').fill(recipient)
   await page.getByLabel('送るJPYCの数量').fill(amount)
   await page.getByRole('button', { name: '内容を確認' }).click()
@@ -226,9 +232,10 @@ test('暗号化して保存し、再読み込み後に復号できる', async ({
     .click()
 
   await expect(page.getByText('ウォレットアドレス')).toBeVisible()
-  const originalAddress = await page
-    .getByLabel('ウォレットアドレス値')
-    .textContent()
+  const addressOutput = page.getByLabel('ウォレットアドレス値')
+  const originalAddress =
+    (await addressOutput.getAttribute('title')) ??
+    (await addressOutput.textContent())
   expect(originalAddress).toMatch(/^0x[a-fA-F0-9]{40}$/)
   await expect(page.getByLabel('KAIA残高値')).toHaveText('1 KAIA')
   await expect(page.getByLabel('JPYC残高値')).toHaveText('9000 JPYC')
@@ -242,7 +249,8 @@ test('暗号化して保存し、再読み込み後に復号できる', async ({
 
   await page.getByLabel('パスワード').fill('e2e-test-password')
   await page.getByRole('button', { name: 'ウォレットを解除' }).click()
-  await expect(page.getByLabel('ウォレットアドレス値')).toHaveText(
+  await expect(page.getByLabel('ウォレットアドレス値')).toHaveAttribute(
+    'title',
     originalAddress ?? '',
   )
   await expect(page.getByLabel('KAIA残高値')).toHaveText('1 KAIA')
@@ -320,6 +328,7 @@ test('手動JPYC送金を確認後に一度だけ送信し成功後の残高を�
     'href',
     `${KAIROS_NETWORK.blockExplorerUrl}/tx/${rpc.transactionHash}`,
   )
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
   await expect(page.getByLabel('KAIA残高値')).toHaveText('0.999 KAIA')
   await expect(page.getByLabel('JPYC残高値')).toHaveText('8999 JPYC')
   expect(rpc.broadcasts).toBe(1)
@@ -419,4 +428,135 @@ test('確認buttonの連続操作でもbroadcastは一度だけ', async ({ page 
 
   await expect(page.getByRole('heading', { name: '送金が確定しました' })).toBeVisible()
   expect(rpc.broadcasts).toBe(1)
+})
+
+test('ホームはJPYCを主要残高として表示し、受取・送金・設定へ移動できる', async ({
+  page,
+}) => {
+  await mockKairosRpc(page)
+  const address = await createAndUnlockWallet(page)
+
+  await expect(page.getByRole('heading', { name: 'LivT Wallet' })).toBeVisible()
+  await expect(page.getByLabel('JPYC残高値')).toHaveText('9000 JPYC')
+  await expect(page.getByLabel('ウォレットアドレス値')).toHaveAttribute(
+    'title',
+    address,
+  )
+  await expect(page.getByLabel('ウォレットアドレス値')).toHaveText(
+    /^0x[a-fA-F0-9]+…[a-fA-F0-9]+$/,
+  )
+  await expect(page.getByLabel('KAIA残高値')).toHaveText('1 KAIA')
+  await expect(page.getByRole('button', { name: 'Receive JPYC' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send JPYC' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy address' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open settings' })).toBeVisible()
+})
+
+test('アドレス複写は完全な公開アドレスだけをコピーし成功を通知する', async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await mockKairosRpc(page)
+  const address = await createAndUnlockWallet(page)
+
+  await page.getByRole('button', { name: 'Copy address' }).click()
+
+  await expect(
+    page.getByText('アドレスをコピーしました', { exact: true }),
+  ).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(address)
+})
+
+test('受取画面は完全なアドレスとKairosの情報を表示しホームに戻れる', async ({
+  page,
+}) => {
+  await mockKairosRpc(page)
+  const address = await createAndUnlockWallet(page)
+
+  await page.getByRole('button', { name: 'Receive JPYC' }).click()
+
+  const receiveView = page.getByRole('region', { name: 'JPYCを受け取る' })
+  await expect(receiveView.getByRole('heading', { name: 'JPYCを受け取る' })).toBeVisible()
+  await expect(receiveView.getByText(address, { exact: true })).toBeVisible()
+  await expect(
+    receiveView.getByText(KAIROS_NETWORK.name, { exact: true }),
+  ).toBeVisible()
+  await expect(receiveView.getByText('1001', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
+  await expect(page.getByRole('button', { name: 'Receive JPYC' })).toBeVisible()
+})
+
+test('送金画面は既存フォームを開き、未送信のままホームに戻れる', async ({
+  page,
+}) => {
+  const rpc = await mockKairosRpc(page)
+  await createAndUnlockWallet(page)
+  const nativeBalanceReads = rpc.nativeBalanceReads
+  const tokenBalanceReads = rpc.tokenBalanceReads
+
+  await openTransferReview(page)
+  await page.getByLabel('送金確認用パスワード').fill(transferPassword)
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
+
+  await expect(page.getByRole('button', { name: 'Send JPYC' })).toBeVisible()
+  await page.getByRole('button', { name: 'Send JPYC' }).click()
+  await expect(page.getByLabel('送り先アドレス')).toHaveValue('')
+  await expect(page.getByLabel('送金確認用パスワード')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
+  expect(rpc.chainChecks).toBe(0)
+  expect(rpc.simulations).toBe(0)
+  expect(rpc.broadcasts).toBe(0)
+  expect(rpc.nativeBalanceReads).toBe(nativeBalanceReads)
+  expect(rpc.tokenBalanceReads).toBe(tokenBalanceReads)
+})
+
+test('設定画面はKairosの読み取り情報だけを表示しホームに戻れる', async ({
+  page,
+}) => {
+  await mockKairosRpc(page)
+  await createAndUnlockWallet(page)
+
+  await page.getByRole('button', { name: 'Open settings' }).click()
+
+  const settingsView = page.getByRole('region', { name: '設定' })
+  await expect(settingsView.getByRole('heading', { name: '設定' })).toBeVisible()
+  await expect(
+    settingsView.getByText(KAIROS_NETWORK.name, { exact: true }),
+  ).toBeVisible()
+  await expect(settingsView.getByText('1001', { exact: true })).toBeVisible()
+  await expect(page.getByText(/Mainnet/i)).toHaveCount(0)
+  await expect(page.locator('input')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
+  await expect(page.getByRole('button', { name: 'Open settings' })).toBeVisible()
+})
+
+test('携帯幅でも主要操作が収まり各画面とホームを往復できる', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await mockKairosRpc(page)
+  await createAndUnlockWallet(page)
+
+  for (const action of [
+    'Copy address',
+    'Receive JPYC',
+    'Send JPYC',
+    'Open settings',
+  ]) {
+    await expect(page.getByRole('button', { name: action })).toBeVisible()
+  }
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true)
+
+  await page.getByRole('button', { name: 'Receive JPYC' }).click()
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
+  await page.getByRole('button', { name: 'Send JPYC' }).click()
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
+  await page.getByRole('button', { name: 'Open settings' }).click()
+  await page.getByRole('button', { name: 'Back to wallet' }).click()
+  await expect(page.getByLabel('JPYC残高値')).toBeVisible()
 })

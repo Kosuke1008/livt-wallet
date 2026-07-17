@@ -2,6 +2,11 @@ import { useRef, useState } from 'react'
 import type { Address } from 'viem'
 import { getActiveNetwork } from '../blockchain/activeNetwork'
 import {
+  formatKairosBalance,
+  getKairosNativeBalance,
+  KairosRpcError,
+} from '../blockchain/kairosBalance'
+import {
   type Erc20BalanceResult,
   getErc20TokenBalance,
 } from '../tokens/tokenBalance'
@@ -9,21 +14,21 @@ import {
   InvalidTokenContractError,
   TokenMetadataError,
 } from '../tokens/tokenMetadata'
+import { approvedJpycToken } from '../tokens/tokenRegistry'
 import {
   createAndSaveWallet,
   hasEncryptedWallet,
   IncorrectPasswordError,
   unlockStoredWalletAddress,
 } from '../wallet/encryptedWallet'
-import {
-  formatKairosBalance,
-  getKairosNativeBalance,
-  KairosRpcError,
-} from '../blockchain/kairosBalance'
-import { approvedJpycToken } from '../tokens/tokenRegistry'
 import { JpycTransferPanel } from './JpycTransferPanel'
+import { ReceivePanel } from './ReceivePanel'
+import { SettingsPanel } from './SettingsPanel'
+import { WalletHome } from './WalletHome'
 
 const activeNetwork = getActiveNetwork()
+
+type WalletView = 'home' | 'receive' | 'send' | 'settings'
 
 export function App() {
   const [address, setAddress] = useState<Address | null>(null)
@@ -31,6 +36,7 @@ export function App() {
   const [walletExists, setWalletExists] = useState(
     () => typeof localStorage !== 'undefined' && hasEncryptedWallet(),
   )
+  const [activeView, setActiveView] = useState<WalletView>('home')
   const [error, setError] = useState<string | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [balanceInPeb, setBalanceInPeb] = useState<bigint | null>(null)
@@ -125,6 +131,7 @@ export function App() {
       setAddress(walletAddress)
       setWalletExists(true)
       setPassword('')
+      setActiveView('home')
       await refreshBalances(walletAddress)
     } catch (caughtError) {
       setError(
@@ -139,76 +146,82 @@ export function App() {
 
   return (
     <main className="shell">
-      <section className="card" aria-labelledby="page-title">
-        <p className="eyebrow">LIVT</p>
-        <h1 id="page-title">Wallet</h1>
-        <p className="status">ローカルウォレット</p>
-        <p className="network" aria-label="アクティブネットワーク">
-          {activeNetwork.name}
-        </p>
-        <p className="description">
-          秘密情報はこの端末内に暗号化して保存し、残高と取引だけをKairosへ問い合わせます。
-        </p>
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="wallet-password">パスワード</label>
-          <input
-            id="wallet-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            required
-          />
-          <button type="submit" disabled={isWorking}>
-            {walletExists ? 'ウォレットを解除' : 'ウォレットを作成して暗号化'}
-          </button>
-        </form>
-        {error && <p role="alert">{error}</p>}
-        {address && (
-          <div className="address-panel" aria-live="polite">
-            <span>ウォレットアドレス</span>
-            <output aria-label="ウォレットアドレス値">{address}</output>
-            <div className="balance" aria-live="polite">
-              <span>KAIA残高</span>
-              {isBalanceLoading && <p>残高を読み込み中…</p>}
-              {balanceInPeb !== null && !isBalanceLoading && (
-                <output aria-label="KAIA残高値">
-                  {formatKairosBalance(balanceInPeb)}{' '}
-                  {activeNetwork.nativeCurrency.symbol}
-                </output>
-              )}
-              {balanceError && (
-                <div>
-                  <p role="alert">{balanceError}</p>
-                  <button type="button" onClick={() => void loadBalance(address)}>
-                    再試行
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="balance token-balance" aria-live="polite">
-              <span>{approvedJpycToken.displayName}残高</span>
-              {isJpycLoading && <p>JPYC残高を読み込み中…</p>}
-              {jpycBalance !== null && !isJpycLoading && (
-                <output aria-label="JPYC残高値">
-                  {jpycBalance.formattedBalance} {jpycBalance.symbol}
-                </output>
-              )}
-              {jpycError && (
-                <div>
-                  <p role="alert">{jpycError}</p>
-                  {isJpycRetryable && (
-                    <button
-                      type="button"
-                      onClick={() => void loadJpycBalance(address)}
-                    >
-                      JPYCを再試行
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-            {jpycBalance !== null && (
+      <div className="wallet-frame">
+        <header className="app-header">
+          <h1>LivT Wallet</h1>
+          <p className="network-badge" aria-label="アクティブネットワーク">
+            {activeNetwork.name}
+          </p>
+        </header>
+
+        {address === null ? (
+          <section className="auth-panel" aria-labelledby="auth-title">
+            <p className="eyebrow">
+              {walletExists ? 'ウォレットはロック中' : 'はじめての設定'}
+            </p>
+            <h2 id="auth-title">
+              {walletExists ? 'ウォレットを解除' : 'ウォレットを作成'}
+            </h2>
+            <p className="description">
+              秘密情報はこの端末内で暗号化します。パスワードは保存されません。
+            </p>
+            <form onSubmit={handleSubmit}>
+              <label htmlFor="wallet-password">パスワード</label>
+              <input
+                id="wallet-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <button type="submit" disabled={isWorking}>
+                {walletExists
+                  ? 'ウォレットを解除'
+                  : 'ウォレットを作成して暗号化'}
+              </button>
+            </form>
+            {error && <p role="alert">{error}</p>}
+          </section>
+        ) : (
+          <>
+            {activeView === 'home' && (
+              <WalletHome
+                address={address}
+                jpycBalance={jpycBalance}
+                isJpycLoading={isJpycLoading}
+                jpycError={jpycError}
+                isJpycRetryable={isJpycRetryable}
+                kaiaBalance={
+                  balanceInPeb === null
+                    ? null
+                    : formatKairosBalance(balanceInPeb)
+                }
+                isKaiaLoading={isBalanceLoading}
+                kaiaError={balanceError}
+                onRetryJpyc={() => void loadJpycBalance(address)}
+                onRetryKaia={() => void loadBalance(address)}
+                onReceive={() => setActiveView('receive')}
+                onSend={() => setActiveView('send')}
+                onOpenSettings={() => setActiveView('settings')}
+              />
+            )}
+
+            {activeView === 'receive' && (
+              <ReceivePanel
+                address={address}
+                onBack={() => setActiveView('home')}
+              />
+            )}
+
+            {activeView === 'settings' && (
+              <SettingsPanel
+                address={address}
+                onBack={() => setActiveView('home')}
+              />
+            )}
+
+            {activeView === 'send' && jpycBalance !== null && (
               <JpycTransferPanel
                 key={address}
                 sender={address}
@@ -218,11 +231,12 @@ export function App() {
                   balanceInPeb !== null && balanceInPeb > 0n
                 }
                 onConfirmed={() => refreshBalances(address)}
+                onBack={() => setActiveView('home')}
               />
             )}
-          </div>
+          </>
         )}
-      </section>
+      </div>
     </main>
   )
 }
