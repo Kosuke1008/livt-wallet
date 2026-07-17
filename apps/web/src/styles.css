@@ -66,9 +66,36 @@ h1 {
   line-height: 1.8;
 }
 
+form {
+  margin-top: 28px;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  color: #a7bdb4;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid rgb(167 243 208 / 25%);
+  border-radius: 12px;
+  color: #ecfdf5;
+  background: rgb(0 0 0 / 20%);
+  font: inherit;
+}
+
+input:focus {
+  outline: 2px solid #6ee7b7;
+  outline-offset: 2px;
+}
+
 button {
   width: 100%;
-  margin-top: 28px;
+  margin-top: 14px;
   padding: 14px 18px;
   border: 0;
   border-radius: 14px;
@@ -77,6 +104,15 @@ button {
   font: inherit;
   font-weight: 800;
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+[role='alert'] {
+  color: #fca5a5;
 }
 
 button:hover {

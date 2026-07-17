@@ -9,6 +9,7 @@
     "typecheck": "corepack pnpm --filter @livt-wallet/web typecheck",
     "test": "corepack pnpm --filter @livt-wallet/web test",
     "test:integration": "corepack pnpm --filter @livt-wallet/web test:integration",
+    "test:e2e": "corepack pnpm --filter @livt-wallet/web test:e2e",
     "build": "corepack pnpm --filter @livt-wallet/web build"
   }
 }

@@ -7,8 +7,9 @@
     "dev": "vite",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:integration": "playwright test",
+    "test": "vitest run --exclude '**/*.integration.test.{ts,tsx}'",
+    "test:integration": "vitest run src/encryptedWallet.integration.test.ts",
+    "test:e2e": "playwright test",
     "build": "tsc -b && vite build"
   },
   "dependencies": {
