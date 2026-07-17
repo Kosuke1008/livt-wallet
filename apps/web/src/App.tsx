@@ -2,6 +2,14 @@ import { useState } from 'react'
 import type { Address } from 'viem'
 import { getActiveNetwork } from './activeNetwork'
 import {
+  type Erc20BalanceResult,
+  getErc20TokenBalance,
+} from './tokenBalance'
+import {
+  InvalidTokenContractError,
+  TokenMetadataError,
+} from './tokenMetadata'
+import {
   createAndSaveWallet,
   hasEncryptedWallet,
   IncorrectPasswordError,
@@ -12,6 +20,7 @@ import {
   getKairosNativeBalance,
   KairosRpcError,
 } from './kairosBalance'
+import { approvedJpycToken } from './tokenRegistry'
 
 const activeNetwork = getActiveNetwork()
 
@@ -26,6 +35,10 @@ export function App() {
   const [balanceInPeb, setBalanceInPeb] = useState<bigint | null>(null)
   const [isBalanceLoading, setIsBalanceLoading] = useState(false)
   const [balanceError, setBalanceError] = useState<string | null>(null)
+  const [jpycBalance, setJpycBalance] = useState<Erc20BalanceResult | null>(null)
+  const [isJpycLoading, setIsJpycLoading] = useState(false)
+  const [jpycError, setJpycError] = useState<string | null>(null)
+  const [isJpycRetryable, setIsJpycRetryable] = useState(false)
 
   const loadBalance = async (walletAddress: Address) => {
     setIsBalanceLoading(true)
@@ -44,6 +57,32 @@ export function App() {
     }
   }
 
+  const loadJpycBalance = async (walletAddress: Address) => {
+    setIsJpycLoading(true)
+    setJpycError(null)
+    setIsJpycRetryable(false)
+    try {
+      setJpycBalance(
+        await getErc20TokenBalance(approvedJpycToken, walletAddress),
+      )
+    } catch (caughtError) {
+      setJpycBalance(null)
+      if (caughtError instanceof KairosRpcError) {
+        setJpycError('JPYC残高の取得中にKairos RPCへ接続できませんでした')
+        setIsJpycRetryable(true)
+      } else if (
+        caughtError instanceof InvalidTokenContractError ||
+        caughtError instanceof TokenMetadataError
+      ) {
+        setJpycError('承認済みJPYCコントラクトを検証できませんでした')
+      } else {
+        setJpycError('JPYC残高を取得できませんでした')
+      }
+    } finally {
+      setIsJpycLoading(false)
+    }
+  }
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
@@ -56,7 +95,10 @@ export function App() {
       setAddress(walletAddress)
       setWalletExists(true)
       setPassword('')
-      await loadBalance(walletAddress)
+      await Promise.all([
+        loadBalance(walletAddress),
+        loadJpycBalance(walletAddress),
+      ])
     } catch (caughtError) {
       setError(
         caughtError instanceof IncorrectPasswordError
@@ -114,6 +156,28 @@ export function App() {
                   <button type="button" onClick={() => void loadBalance(address)}>
                     再試行
                   </button>
+                </div>
+              )}
+            </div>
+            <div className="balance token-balance" aria-live="polite">
+              <span>{approvedJpycToken.displayName}残高</span>
+              {isJpycLoading && <p>JPYC残高を読み込み中…</p>}
+              {jpycBalance !== null && !isJpycLoading && (
+                <output aria-label="JPYC残高値">
+                  {jpycBalance.formattedBalance} {jpycBalance.symbol}
+                </output>
+              )}
+              {jpycError && (
+                <div>
+                  <p role="alert">{jpycError}</p>
+                  {isJpycRetryable && (
+                    <button
+                      type="button"
+                      onClick={() => void loadJpycBalance(address)}
+                    >
+                      JPYCを再試行
+                    </button>
+                  )}
                 </div>
               )}
             </div>

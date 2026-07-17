@@ -20,6 +20,25 @@ EVMアドレスは複数のEVM互換チェーンで同じ形式を利用でき�
 残高の内部値には`number`ではなく`bigint`を使います。JavaScriptの`number`では、
 18桁の最小単位pebを含む大きな整数を正確に表現できないためです。
 
+## Kairos JPYC
+
+UIに表示するERC-20は、承認済みのKairos JPYCテストトークンだけです。
+
+- Contract: `0xe7c3d8c9a439fede00d2600032d5db0be71c3c29`
+- Expected symbol: `JPYC`
+- Expected decimals: `18`
+
+コントラクトにbytecodeが存在することを確認し、`symbol()`と`decimals()`をチェーンから
+読み取って承認済み設定と照合してから`balanceOf()`を利用します。有効なEVMアドレスでも、
+ERC-20コントラクトであるとは限りません。
+
+ERC-20のraw balanceも`bigint`で保持します。decimalsは表示位置を決める情報であり、raw
+balance自体を変更するものではありません。任意トークンのimportやcontract address入力は
+意図的にサポートしていません。
+
+既知のfunded addressは、任意のoptional read-only確認にだけ利用できます。残高照会には
+秘密鍵やニーモニックは不要であり、このプロジェクトがそれらを要求することはありません。
+
 ## 開発
 
 ```sh
