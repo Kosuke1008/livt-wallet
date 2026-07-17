@@ -1,16 +1,11 @@
-import { isAddress, type Address } from 'viem'
+import type { Address } from 'viem'
 import { validateMnemonic } from '@scure/bip39'
 import {
   english,
   generateMnemonic,
   mnemonicToAccount,
 } from 'viem/accounts'
-import { z } from 'zod'
-
-const addressSchema = z
-  .string()
-  .refine(isAddress, { message: 'Invalid EVM address' })
-  .transform((address): Address => address)
+import { isValidEvmAddress, normalizeEvmAddress } from './address'
 
 export interface GeneratedWallet {
   readonly mnemonic: string
@@ -31,7 +26,7 @@ export function recoverAddress(mnemonic: string): Address {
   }
 
   const account = mnemonicToAccount(mnemonic)
-  return addressSchema.parse(account.address)
+  return normalizeEvmAddress(account.address)
 }
 
 export function createWallet(): GeneratedWallet {
@@ -44,5 +39,5 @@ export function createWallet(): GeneratedWallet {
 }
 
 export function isValidWalletAddress(value: string): value is Address {
-  return addressSchema.safeParse(value).success
+  return isValidEvmAddress(value)
 }

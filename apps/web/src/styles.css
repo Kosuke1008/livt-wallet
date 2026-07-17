@@ -60,6 +60,12 @@ h1 {
   font-weight: 700;
 }
 
+.network {
+  margin: 0 0 18px;
+  color: #6ee7b7;
+  font-weight: 700;
+}
+
 .description {
   margin: 0;
   color: #a7bdb4;
@@ -146,6 +152,20 @@ button:focus-visible {
   color: #ecfdf5;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   line-height: 1.5;
+}
+
+.balance {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid rgb(110 231 183 / 18%);
+}
+
+.balance p {
+  margin: 8px 0 0;
+}
+
+.balance button {
+  margin-top: 8px;
 }
 
 @media (max-width: 520px) {

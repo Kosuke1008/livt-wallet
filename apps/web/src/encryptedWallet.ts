@@ -1,5 +1,6 @@
 import type { Address } from 'viem'
 import { z } from 'zod'
+import { evmAddressSchema } from './address'
 import { createWallet, recoverAddress } from './wallet'
 
 const STORAGE_KEY = 'livt-wallet:encrypted-wallet'
@@ -12,7 +13,7 @@ const base64Schema = z.string().min(1).regex(/^[A-Za-z0-9+/]+={0,2}$/)
 export const encryptedWalletSchema = z
   .object({
     version: z.literal(1),
-    address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    address: evmAddressSchema,
     ciphertext: base64Schema,
     iv: base64Schema,
     salt: base64Schema,
