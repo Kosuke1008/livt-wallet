@@ -23,7 +23,7 @@ export class InvalidMnemonicError extends Error {
   }
 }
 
-export function recoverAddress(mnemonic: string): Address {
+export function recoverAddress(mnemonic: string): Address { //12単語から口座番号の復元
   if (!validateMnemonic(mnemonic, english)) {
     throw new InvalidMnemonicError()
   }
@@ -32,7 +32,7 @@ export function recoverAddress(mnemonic: string): Address {
   return normalizeEvmAddress(account.address)
 }
 
-export function createWallet(): GeneratedWallet {
+export function createWallet(): GeneratedWallet { // １．２．wallet作成
   const mnemonic = generateMnemonic(english)
 
   return {

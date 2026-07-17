@@ -10,7 +10,7 @@ const IV_BYTES = 12
 
 const base64Schema = z.string().min(1).regex(/^[A-Za-z0-9+/]+={0,2}$/)
 
-export const encryptedWalletSchema = z
+export const encryptedWalletSchema = z //ブラウザに保存する定義
   .object({
     version: z.literal(1),
     address: evmAddressSchema,
@@ -108,7 +108,7 @@ async function deriveEncryptionKey(
   }
 }
 
-export async function encryptMnemonic(
+export async function encryptMnemonic( //暗号化
   mnemonic: string,
   password: string,
 ): Promise<EncryptedWallet> {
@@ -174,7 +174,8 @@ export async function decryptMnemonic(
       const mnemonic = new TextDecoder('utf-8', { fatal: true }).decode(
         plaintextBytes,
       )
-      if (recoverAddress(mnemonic) !== payload.address) {
+      //復号化した12単語からアドレスを復元して、保存されているアドレスと一致するか確認する
+      if (recoverAddress(mnemonic) !== payload.address) { 
         throw new InvalidStoredWalletError()
       }
       return mnemonic
@@ -222,17 +223,17 @@ export function loadEncryptedWallet(
   }
 }
 
-export async function createAndSaveWallet(
+export async function createAndSaveWallet( //作成から保存まで
   password: string,
   storage: WalletStorage = localStorage,
 ): Promise<Address> {
-  const wallet = createWallet()
-  const payload = await encryptMnemonic(wallet.mnemonic, password)
-  saveEncryptedWallet(payload, storage)
+  const wallet = createWallet() // １．２．wallet作成
+  const payload = await encryptMnemonic(wallet.mnemonic, password) //12単語と口座番号(adress)を暗号化して保存する
+  saveEncryptedWallet(payload, storage) //ブラウザ内保存領域
   return wallet.address
 }
 
-export async function unlockStoredWalletAddress(
+export async function unlockStoredWalletAddress( //保存済みのwalletを復号化して、アドレスを取得する
   password: string,
   storage: WalletStorage = localStorage,
 ): Promise<Address> {

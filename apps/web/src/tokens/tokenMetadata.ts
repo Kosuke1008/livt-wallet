@@ -77,6 +77,7 @@ async function readTokenMetadata(
   return { symbol: symbol.data, decimals: decimals.data }
 }
 
+//ERC-20トークンの検証
 export async function validateErc20Token(
   token: Erc20TokenConfiguration,
   client: Erc20ReadClient = kairosErc20ReadClient,

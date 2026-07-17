@@ -111,6 +111,8 @@ export function App() {
     ])
   }
 
+  //１．１．Walletの保存状況を調べて、Walletが存在する場合は、パスワードを使ってWalletを復号化し、アドレスを取得する。
+  //１．２．Walletが存在しない場合は、パスワードを使って新しいWalletを作成し、保存する。
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
@@ -119,7 +121,7 @@ export function App() {
     try {
       const walletAddress = walletExists
         ? await unlockStoredWalletAddress(password)
-        : await createAndSaveWallet(password)
+        : await createAndSaveWallet(password) //１．２．wallets.ts
       setAddress(walletAddress)
       setWalletExists(true)
       setPassword('')

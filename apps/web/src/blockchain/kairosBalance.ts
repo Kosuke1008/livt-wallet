@@ -8,11 +8,11 @@ export interface NativeBalanceClient {
   getBalance(parameters: { address: Address }): Promise<bigint>
 }
 
-export async function getKairosNativeBalance(
+export async function getKairosNativeBalance( //KAIA残高取得
   address: unknown,
   client: NativeBalanceClient = kairosPublicClient,
 ): Promise<bigint> {
-  const normalizedAddress = normalizeEvmAddress(address)
+  const normalizedAddress = normalizeEvmAddress(address) //正しいEVMアドレスへ整形
 
   try {
     const balance: unknown = await client.getBalance({ address: normalizedAddress })

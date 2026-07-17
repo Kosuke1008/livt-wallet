@@ -62,6 +62,7 @@ export function defineApprovedToken(
   }
 }
 
+//JPYCを読む
 export const approvedJpycToken = Object.freeze(
   defineApprovedToken({
     id: 'jpyc',
