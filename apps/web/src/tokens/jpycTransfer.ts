@@ -160,6 +160,7 @@ export async function executeJpycTransfer({
     if (!isCurrent()) throw new StaleTransferRequestError()
   }
 
+  // 1. 承認済みJPYCを解決し、実行直前にも宛先と数量を再検査する
   assertCurrent()
   const token = resolveApprovedToken(intent.tokenId)
   const recipient = validateTransferRecipient(
@@ -172,12 +173,15 @@ export async function executeJpycTransfer({
     throw new InvalidTransferAmountError('uint256-overflow')
   }
 
+  // 2. RPCのchain IDがKaia Kairosの1001であることを確認する
   onPhase?.({ phase: 'simulating' })
   await verifyKairosChain(rpcClient)
   assertCurrent()
+  // 3. 契約コード、symbol、decimalsが承認済みJPYCの設定と一致するか確認する
   await validateErc20Token(token, rpcClient)
   assertCurrent()
 
+  // 4. 送金手数料に使うKAIA残高があるか確認する
   const nativeBalance = await callBeforeBroadcast(() =>
     rpcClient.getNativeBalance(intent.sender),
   )
@@ -187,6 +191,7 @@ export async function executeJpycTransfer({
   let simulationResult: unknown
   let estimatedGas: bigint
   try {
+    // 5. JPYC送金を事前実行し、必要なガス量も見積もる
     simulationResult = await rpcClient.simulateTransfer({
       contractAddress: token.contractAddress,
       sender: intent.sender,
@@ -209,6 +214,7 @@ export async function executeJpycTransfer({
   assertCurrent()
   onPhase?.({ phase: 'simulating', estimatedGas })
 
+  // 6. ガス単価とnonceを取得し、見積手数料をKAIA残高で支払えるか確認する
   const [gasPrice, nonce] = await Promise.all([
     callBeforeBroadcast(() => rpcClient.getGasPrice()),
     callBeforeBroadcast(() => rpcClient.getPendingNonce(intent.sender)),
@@ -218,6 +224,7 @@ export async function executeJpycTransfer({
   }
   assertCurrent()
 
+  // 7. 承認済みJPYCのtransfer呼び出しを取引データへ変換する
   const data = encodeFunctionData({
     abi: erc20TransferAbi,
     functionName: 'transfer',
@@ -225,6 +232,7 @@ export async function executeJpycTransfer({
   })
 
   onPhase?.({ phase: 'signing', estimatedGas })
+  // 8. 署名が必要な間だけ口座を復元し、解除中の住所との一致も確認する
   const transactionHash = await signingAccountProvider.withAccount(
     password,
     intent.sender,
@@ -232,6 +240,7 @@ export async function executeJpycTransfer({
       assertCurrent()
       let serializedTransaction
       try {
+        // 9. 秘密情報を送らず、端末内で取引へ署名する
         serializedTransaction = await account.signTransaction({
           chainId: KAIROS_NETWORK.chainId,
           data,
@@ -250,6 +259,7 @@ export async function executeJpycTransfer({
       onPhase?.({ phase: 'broadcasting', estimatedGas })
       assertCurrent()
       try {
+        // 10. 署名済み取引を一度だけ送り、結果不明でも自動再送しない
         const returnedTransactionHash = await rpcClient.sendRawTransaction(
           serializedTransaction,
         )
@@ -281,6 +291,7 @@ export async function executeJpycTransfer({
   })
   assertCurrent()
 
+  // 11. receiptを待ち、時間切れと確認不能を別の状態として扱う
   let receipt
   try {
     receipt = await rpcClient.waitForReceipt(transactionHash)
@@ -298,6 +309,7 @@ export async function executeJpycTransfer({
     throw new TransferConfirmationUnknownError(transactionHash)
   }
 
+  // 12. receiptの状態を成功または取り消しとして画面側へ返す
   return {
     status: receipt.status,
     transactionHash,

@@ -9,6 +9,7 @@ import {
   type Erc20TokenConfiguration,
 } from './tokenRegistry'
 
+// トークンはchain IDと契約住所で識別し、symbolとdecimalsで設定の一致を確認する
 const symbolSchema = z.string().min(1).max(32)
 export const tokenDecimalsSchema = z.number().int().min(0).max(255)
 
@@ -56,6 +57,7 @@ async function readTokenMetadata(
   let symbolValue: unknown
   let decimalsValue: unknown
   try {
+    // 1. 契約からsymbolとdecimalsを並行して読み込む
     ;[symbolValue, decimalsValue] = await Promise.all([
       client.readSymbol(token.contractAddress),
       client.readDecimals(token.contractAddress),
@@ -67,13 +69,16 @@ async function readTokenMetadata(
     })
   }
 
+  // 2. 契約の応答が扱える文字列と整数かZodで検査する
   const symbol = symbolSchema.safeParse(symbolValue)
   const decimals = tokenDecimalsSchema.safeParse(decimalsValue)
   if (!symbol.success || !decimals.success) throw new TokenMetadataError()
+  // 3. 読み取った値が承認済み設定と一致しなければ拒否する
   if (symbol.data !== token.expectedSymbol) throw new TokenSymbolMismatchError()
   if (decimals.data !== token.expectedDecimals) {
     throw new TokenDecimalsMismatchError()
   }
+  // 4. 検査済みの表示記号と小数桁数だけを返す
   return { symbol: symbol.data, decimals: decimals.data }
 }
 
@@ -82,9 +87,11 @@ export async function validateErc20Token(
   token: Erc20TokenConfiguration,
   client: Erc20ReadClient = kairosErc20ReadClient,
 ): Promise<ValidatedTokenMetadata> {
+  // 1. chain IDがKairosで、契約住所の形式が有効か確認する
   const validatedToken = defineApprovedToken(token)
   let bytecode
   try {
+    // 2. 設定された住所に契約コードが存在するか確認する
     bytecode = await client.getBytecode(validatedToken.contractAddress)
   } catch (error) {
     throw toKairosRpcError(error)
@@ -92,5 +99,6 @@ export async function validateErc20Token(
   if (bytecode === undefined || bytecode === '0x') {
     throw new InvalidTokenContractError()
   }
+  // 3. 契約のsymbolとdecimalsも承認済み設定と照合する
   return readTokenMetadata(validatedToken, client)
 }

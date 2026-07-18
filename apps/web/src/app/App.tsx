@@ -50,12 +50,15 @@ export function App() {
   const jpycBalanceRequest = useRef(0)
 
   const loadBalance = async (walletAddress: Address) => {
+    // 1. KAIA残高用の要求番号を進め、古い応答を見分けられるようにする
     const request = nativeBalanceRequest.current + 1
     nativeBalanceRequest.current = request
     setIsBalanceLoading(true)
     setBalanceError(null)
     try {
+      // 2. 公開アドレスを使ってKairosからKAIA残高を取得する
       const nextBalance = await getKairosNativeBalance(walletAddress)
+      // 3. 最新の要求だけをReactの状態へ反映する
       if (nativeBalanceRequest.current === request) {
         setBalanceInPeb(nextBalance)
       }
@@ -76,16 +79,19 @@ export function App() {
   }
 
   const loadJpycBalance = async (walletAddress: Address) => {
+    // 1. JPYC残高用の要求番号を進め、再試行前の応答を見分けられるようにする
     const request = jpycBalanceRequest.current + 1
     jpycBalanceRequest.current = request
     setIsJpycLoading(true)
     setJpycError(null)
     setIsJpycRetryable(false)
     try {
+      // 2. 承認済みJPYCの残高を公開アドレスから取得する
       const nextBalance = await getErc20TokenBalance(
         approvedJpycToken,
         walletAddress,
       )
+      // 3. 最新の要求だけをReactの状態へ反映する
       if (jpycBalanceRequest.current === request) {
         setJpycBalance(nextBalance)
       }
@@ -111,6 +117,7 @@ export function App() {
   }
 
   const refreshBalances = async (walletAddress: Address) => {
+    // 1. KAIAとJPYCを独立した状態のまま並行して読み込む
     await Promise.all([
       loadBalance(walletAddress),
       loadJpycBalance(walletAddress),
@@ -125,13 +132,17 @@ export function App() {
     setIsWorking(true)
 
     try {
+      // 1. 保存済みなら解除し、未作成なら新しいウォレットを作成する
       const walletAddress = walletExists
         ? await unlockStoredWalletAddress(password)
-        : await createAndSaveWallet(password) //１．２．wallets.ts
+        : await createAndSaveWallet(password)
+      // 2. 作成・解除処理から公開アドレスだけをReactへ受け取る
       setAddress(walletAddress)
       setWalletExists(true)
       setPassword('')
+      // 3. ウォレットを作り直さず、表示する画面だけをホームへ戻す
       setActiveView('home')
+      // 4. 解除した公開アドレスのKAIAとJPYC残高を読み込む
       await refreshBalances(walletAddress)
     } catch (caughtError) {
       setError(
@@ -144,6 +155,7 @@ export function App() {
     }
   }
 
+  // 画面切替は表示状態だけを変更し、同じウォレットを使い続ける
   return (
     <main className="shell">
       <div className="wallet-frame">

@@ -67,8 +67,10 @@ export function JpycTransferPanel({
   const mounted = useRef(true)
 
   useEffect(() => {
+    // 1. この画面が表示中かを記録し、非同期処理の反映先を確認できるようにする
     mounted.current = true
     return () => {
+      // 2. 画面を離れたら要求番号を進め、後から届く古い結果を無効にする
       mounted.current = false
       requestGeneration.current = nextTransferRequestGeneration(
         requestGeneration.current,
@@ -103,6 +105,7 @@ export function JpycTransferPanel({
     event.preventDefault()
     setInputError(null)
     try {
+      // 1. 入力された宛先、数量、利用可能残高を検査する
       const intent = createJpycTransferIntent({
         tokenId: 'jpyc',
         senderAddress: sender,
@@ -111,6 +114,7 @@ export function JpycTransferPanel({
         availableBalance: availableJpycBalance,
         decimals: jpycDecimals,
       })
+      // 2. 検査済みの送金内容を確認画面へ渡す
       dispatch({
         type: 'review',
         requestGeneration: requestGeneration.current,
@@ -125,10 +129,13 @@ export function JpycTransferPanel({
     update: JpycTransferPhaseUpdate,
     generation: number,
   ) => {
+    // 1. 画面を離れた後や、より新しい要求が始まった後の結果を捨てる
     if (!mounted.current || requestGeneration.current !== generation) return
+    // 2. 事前実行で得たガス見積もりを確認画面へ反映する
     if (update.estimatedGas !== undefined) {
       setEstimatedGas(update.estimatedGas)
     }
+    // 3. 送金処理の進行状況を画面用の状態へ変換する
     if (update.phase === 'signing') {
       dispatch({ type: 'simulation-succeeded', requestGeneration: generation })
     } else if (update.phase === 'broadcasting') {
@@ -146,17 +153,21 @@ export function JpycTransferPanel({
   }
 
   const handleConfirm = async () => {
+    // 1. 確認画面からの最初の操作だけを受け付け、二重送信を防ぐ
     if (state.status !== 'reviewing' || submissionInFlight.current) return
     submissionInFlight.current = true
+    // 2. この送金専用の要求番号を発行し、古い非同期結果と区別する
     const generation = nextTransferRequestGeneration(requestGeneration.current)
     requestGeneration.current = generation
     dispatch({ type: 'start', requestGeneration: generation })
 
+    // 3. 再入力されたパスワードを処理へ渡し、画面の入力状態からは取り除く
     const passwordForSigning = confirmationPassword
     setConfirmationPassword('')
     setEstimatedGas(null)
 
     try {
+      // 4. 検査、署名、送信、receipt確認を送金処理本体へ任せる
       const result = await executeJpycTransfer({
         intent: state.intent,
         password: passwordForSigning,
@@ -164,17 +175,21 @@ export function JpycTransferPanel({
         isCurrent: () =>
           mounted.current && requestGeneration.current === generation,
       })
+      // 5. この画面で開始した最新の送金結果だけを反映する
       if (!mounted.current || requestGeneration.current !== generation) return
 
+      // 6. receiptが取り消しなら成功にせず、専用の結果を表示する
       if (result.status === 'reverted') {
         dispatch({ type: 'reverted', requestGeneration: generation })
         return
       }
 
+      // 7. receiptが成功した後だけKAIAとJPYC残高を再取得する
       await onConfirmed()
       if (!mounted.current || requestGeneration.current !== generation) return
       dispatch({ type: 'confirmed', requestGeneration: generation })
     } catch (error) {
+      // 8. 時間切れと確認不能を失敗から分け、自動再送しない状態で表示する
       if (!mounted.current || requestGeneration.current !== generation) return
       if (error instanceof StaleTransferRequestError) return
       if (error instanceof TransferConfirmationTimeoutError) {
@@ -208,6 +223,7 @@ export function JpycTransferPanel({
         })
       }
     } finally {
+      // 9. 同じ要求が有効な場合だけ、次の操作を受け付けられる状態へ戻す
       if (requestGeneration.current === generation) {
         submissionInFlight.current = false
       }
@@ -288,6 +304,7 @@ export function JpycTransferPanel({
       ? state.transactionHash
       : null
 
+  // 確認画面ではパスワードを再入力し、確定・取り消し・確認不能を別々に表示する
   return (
     <section className="transfer-panel" aria-labelledby="transfer-title">
       {!isProcessing(state.status) && (

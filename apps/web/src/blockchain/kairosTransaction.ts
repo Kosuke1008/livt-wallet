@@ -15,13 +15,18 @@ export interface KairosTransactionClient {
 }
 
 export const kairosTransactionClient: KairosTransactionClient = {
+  // 送金前に、手数料を支払うKAIA残高を読む
   getNativeBalance: (address) => kairosPublicClient.getBalance({ address }),
+  // gas priceはKairosが示す現在のガス単価として取得する
   getGasPrice: () => kairosPublicClient.getGasPrice(),
+  // nonceは同じ口座の取引順序を表すため、未確定取引も含めて取得する
   getPendingNonce: (address) =>
     kairosPublicClient.getTransactionCount({ address, blockTag: 'pending' }),
+  // 端末内で署名済みの生取引だけをRPCへ送る
   sendRawTransaction: (serializedTransaction) =>
     kairosPublicClient.sendRawTransaction({ serializedTransaction }),
   waitForReceipt: async (transactionHash) => {
+    // receiptだけを待ち、確認不能や時間切れでもここでは自動再送しない
     const receipt = await kairosPublicClient.waitForTransactionReceipt({
       hash: transactionHash,
       checkReplacement: false,

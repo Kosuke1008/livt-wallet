@@ -35,12 +35,15 @@ export async function getErc20TokenBalance(
   ownerAddress: unknown,
   client: Erc20ReadClient = kairosErc20ReadClient,
 ): Promise<Erc20BalanceResult> {
+  // 1. chain IDがKairosで、契約住所の形式が有効か確認する
   const validatedToken = defineApprovedToken(token)
   const normalizedOwnerAddress = normalizeEvmAddress(ownerAddress)
+  // 2. 契約コード、symbol、decimalsが承認済み設定と一致するか確認する
   const metadata = await validateErc20Token(validatedToken, client)
 
   let rawBalance: unknown
   try {
+    // 3. ERC-20のbalanceOfを呼び、指定した公開アドレスの残高を読む
     rawBalance = await client.readBalance(
       validatedToken.contractAddress,
       normalizedOwnerAddress,
@@ -49,8 +52,10 @@ export async function getErc20TokenBalance(
     if (isKairosRpcTransportError(error)) throw toKairosRpcError(error)
     throw new TokenBalanceError({ cause: error })
   }
+  // 4. 残高はNumberへ変換せず、安全な整数であるbigintのまま保持する
   if (typeof rawBalance !== 'bigint') throw new TokenBalanceError()
 
+  // 5. 計算用のbigintを残しながら、画面表示用の文字列も作る
   return {
     token: validatedToken,
     ownerAddress: normalizedOwnerAddress,
