@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { kairosChain, KAIROS_NETWORK } from '../../../src/blockchain/kairos'
+import {
+  DEFAULT_KAIROS_RPC_URL,
+  kairosChain,
+  KAIROS_NETWORK,
+  resolveKairosRpcUrl,
+} from '../../../src/blockchain/kairos'
 
 describe('Kaia Kairos chain', () => {
   it('chain IDが正確に1001である', () => {
@@ -18,5 +23,22 @@ describe('Kaia Kairos chain', () => {
   it('公式Kairos RPCだけを使用しfallbackを持たない', () => {
     expect(kairosChain.rpcUrls.default.http).toEqual([KAIROS_NETWORK.rpcUrl])
     expect(Object.keys(kairosChain.rpcUrls)).toEqual(['default'])
+  })
+
+  it('未設定時は公式RPCを維持しlocal E2E RPCだけHTTPを許可する', () => {
+    expect(resolveKairosRpcUrl(undefined)).toBe(DEFAULT_KAIROS_RPC_URL)
+    expect(resolveKairosRpcUrl('http://127.0.0.1:18545')).toBe(
+      'http://127.0.0.1:18545/',
+    )
+
+    for (const value of [
+      'http://kairos.example.test',
+      'https://user:secret@kairos.example.test',
+      'not-a-url',
+    ]) {
+      expect(() => resolveKairosRpcUrl(value)).toThrow(
+        'Invalid Kairos RPC URL',
+      )
+    }
   })
 })

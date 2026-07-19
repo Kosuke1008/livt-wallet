@@ -420,6 +420,27 @@ form > button[type='submit'] {
   margin-top: 16px;
 }
 
+.livt-payment-panel .payment-login,
+.livt-payment-panel .payment-confirmation {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e8e4;
+}
+
+.livt-payment-panel .payment-login h3 {
+  margin-top: 0;
+}
+
+.livt-payment-panel .payment-login button,
+.livt-payment-panel .payment-confirmation button {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.livt-payment-panel .payment-request-details dd {
+  overflow-wrap: anywhere;
+}
+
 .visually-hidden {
   position: absolute !important;
   width: 1px !important;

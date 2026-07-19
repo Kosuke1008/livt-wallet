@@ -10,6 +10,11 @@
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
+    "test:e2e:payment": "node e2e/payment/support/run-payment-e2e.mjs",
+    "test:e2e:payment:headed": "node e2e/payment/support/run-payment-e2e.mjs --headed",
+    "test:e2e:payment:ui": "node e2e/payment/support/run-payment-e2e.mjs --ui",
+    "test:e2e:payment:edge-review": "node e2e/payment/support/run-payment-e2e.mjs --edge-review",
+    "review:kairos-live": "node e2e/payment/support/run-live-kairos-review.mjs",
     "build": "tsc -b && vite build"
   },
   "dependencies": {

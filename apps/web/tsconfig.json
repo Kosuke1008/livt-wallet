@@ -17,5 +17,12 @@
     "jsx": "react-jsx",
     "types": ["vite/client", "vitest/globals", "node"]
   },
-  "include": ["src", "tests", "vite.config.ts", "playwright.config.ts", "e2e"]
+  "include": [
+    "src",
+    "tests",
+    "vite.config.ts",
+    "playwright.config.ts",
+    "playwright.payment.config.ts",
+    "e2e"
+  ]
 }

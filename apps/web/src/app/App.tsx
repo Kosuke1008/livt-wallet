@@ -21,14 +21,32 @@ import {
   IncorrectPasswordError,
   unlockStoredWalletAddress,
 } from '../wallet/encryptedWallet'
+import {
+  createLivtPaymentApiClient,
+  getConfiguredLivtApiBaseUrl,
+  type LivtPaymentApiClient,
+} from '../payments/livtPaymentApi'
+import {
+  InvalidPaymentRequestError,
+  parseLivtPaymentRequest,
+  type LivtPaymentRequest,
+} from '../payments/paymentRequest'
 import { JpycTransferPanel } from './JpycTransferPanel'
+import { LivtPaymentPanel } from './LivtPaymentPanel'
 import { ReceivePanel } from './ReceivePanel'
 import { SettingsPanel } from './SettingsPanel'
 import { WalletHome } from './WalletHome'
 
 const activeNetwork = getActiveNetwork()
 
-type WalletView = 'home' | 'receive' | 'send' | 'settings'
+type WalletView = 'home' | 'receive' | 'send' | 'settings' | 'payment'
+
+interface StartupPaymentIntegration {
+  readonly requested: boolean
+  readonly request: LivtPaymentRequest | null
+  readonly apiClient: LivtPaymentApiClient | null
+  readonly error: string | null
+}
 
 export function App() {
   const [address, setAddress] = useState<Address | null>(null)
@@ -36,7 +54,10 @@ export function App() {
   const [walletExists, setWalletExists] = useState(
     () => typeof localStorage !== 'undefined' && hasEncryptedWallet(),
   )
-  const [activeView, setActiveView] = useState<WalletView>('home')
+  const [paymentIntegration] = useState(readStartupPaymentIntegration)
+  const [activeView, setActiveView] = useState<WalletView>(
+    paymentIntegration.requested ? 'payment' : 'home',
+  )
   const [error, setError] = useState<string | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [balanceInPeb, setBalanceInPeb] = useState<bigint | null>(null)
@@ -141,7 +162,7 @@ export function App() {
       setWalletExists(true)
       setPassword('')
       // 3. ウォレットを作り直さず、表示する画面だけをホームへ戻す
-      setActiveView('home')
+      setActiveView(paymentIntegration.requested ? 'payment' : 'home')
       // 4. 解除した公開アドレスのKAIAとJPYC残高を読み込む
       await refreshBalances(walletAddress)
     } catch (caughtError) {
@@ -246,9 +267,86 @@ export function App() {
                 onBack={() => setActiveView('home')}
               />
             )}
+
+            {activeView === 'payment' && paymentIntegration.error !== null && (
+              <section className="transfer-panel livt-payment-panel">
+                <button
+                  type="button"
+                  className="back-button secondary"
+                  onClick={() => setActiveView('home')}
+                >
+                  ← ウォレットへ戻る
+                </button>
+                <p role="alert">{paymentIntegration.error}</p>
+              </section>
+            )}
+
+            {activeView === 'payment' &&
+              paymentIntegration.request !== null &&
+              paymentIntegration.apiClient !== null && (
+                <LivtPaymentPanel
+                  request={paymentIntegration.request}
+                  sender={address}
+                  availableJpycBalance={jpycBalance?.rawBalance ?? null}
+                  hasNativeBalance={
+                    balanceInPeb !== null && balanceInPeb > 0n
+                  }
+                  jpycBalanceError={jpycError}
+                  nativeBalanceError={balanceError}
+                  isJpycBalanceLoading={isJpycLoading}
+                  isNativeBalanceLoading={isBalanceLoading}
+                  onRetryBalances={() => void refreshBalances(address)}
+                  apiClient={paymentIntegration.apiClient}
+                  onConfirmed={() => refreshBalances(address)}
+                  onBack={() => setActiveView('home')}
+                />
+              )}
           </>
         )}
       </div>
     </main>
   )
+}
+
+function readStartupPaymentIntegration(): StartupPaymentIntegration {
+  if (typeof window === 'undefined') {
+    return {
+      requested: false,
+      request: null,
+      apiClient: null,
+      error: null,
+    }
+  }
+
+  const requested = new URL(window.location.href).searchParams.has(
+    'payment_id',
+  )
+  if (!requested) {
+    return {
+      requested: false,
+      request: null,
+      apiClient: null,
+      error: null,
+    }
+  }
+
+  try {
+    const request = parseLivtPaymentRequest(new URL(window.location.href))
+    if (request === null) throw new InvalidPaymentRequestError('malformed-id')
+    const apiClient = createLivtPaymentApiClient(
+      getConfiguredLivtApiBaseUrl(),
+    )
+
+    return { requested: true, request, apiClient, error: null }
+  } catch (error) {
+    return {
+      requested: true,
+      request: null,
+      apiClient: null,
+      error:
+        error instanceof InvalidPaymentRequestError
+          ? '支払いURLが正しくありません。'
+          : '信頼済みLivT APIが設定されていません。',
+    }
+  }
 }

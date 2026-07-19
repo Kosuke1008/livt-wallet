@@ -88,9 +88,11 @@ export class StaleTransferRequestError extends Error {
 
 export class JpycTransferBroadcastError extends Error {
   readonly name = 'JpycTransferBroadcastError'
+  readonly transactionHash: Hash
 
-  constructor(options?: ErrorOptions) {
+  constructor(transactionHash: Hash, options?: ErrorOptions) {
     super('JPYC transfer broadcast was rejected', options)
+    this.transactionHash = transactionHash
   }
 }
 
@@ -256,7 +258,11 @@ export async function executeJpycTransfer({
       }
       assertCurrent()
       const expectedTransactionHash = keccak256(serializedTransaction)
-      onPhase?.({ phase: 'broadcasting', estimatedGas })
+      onPhase?.({
+        phase: 'broadcasting',
+        estimatedGas,
+        transactionHash: expectedTransactionHash,
+      })
       assertCurrent()
       try {
         // 10. 署名済み取引を一度だけ送り、結果不明でも自動再送しない
@@ -278,7 +284,9 @@ export async function executeJpycTransfer({
             { cause: error },
           )
         }
-        throw new JpycTransferBroadcastError({ cause: error })
+        throw new JpycTransferBroadcastError(expectedTransactionHash, {
+          cause: error,
+        })
       }
     },
     storage,

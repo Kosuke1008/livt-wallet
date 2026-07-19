@@ -10,6 +10,11 @@
     "test": "corepack pnpm --filter @livt-wallet/web test",
     "test:integration": "corepack pnpm --filter @livt-wallet/web test:integration",
     "test:e2e": "corepack pnpm --filter @livt-wallet/web test:e2e",
+    "test:e2e:payment": "corepack pnpm --filter @livt-wallet/web test:e2e:payment",
+    "test:e2e:payment:headed": "corepack pnpm --filter @livt-wallet/web test:e2e:payment:headed",
+    "test:e2e:payment:ui": "corepack pnpm --filter @livt-wallet/web test:e2e:payment:ui",
+    "test:e2e:payment:edge-review": "corepack pnpm --filter @livt-wallet/web test:e2e:payment:edge-review",
+    "review:kairos-live": "corepack pnpm --filter @livt-wallet/web review:kairos-live",
     "build": "corepack pnpm --filter @livt-wallet/web build"
   }
 }

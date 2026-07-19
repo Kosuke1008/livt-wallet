@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   HttpRequestError,
   WaitForTransactionReceiptTimeoutError,
+  decodeFunctionData,
   keccak256,
   parseTransaction,
   recoverTransactionAddress,
@@ -35,6 +36,7 @@ import {
   type SigningAccountProvider,
 } from '../../../src/tokens/jpycTransfer'
 import type { JpycTransferRpcClient } from '../../../src/tokens/jpycTransferClient'
+import { erc20TransferAbi } from '../../../src/tokens/erc20Abi'
 import { approvedJpycToken } from '../../../src/tokens/tokenRegistry'
 import { createJpycTransferIntent } from '../../../src/tokens/transferValidation'
 
@@ -189,6 +191,13 @@ describe('manual Kairos JPYC transfer integration', () => {
       approvedJpycToken.contractAddress.toLowerCase(),
     )
     expect(parsed.value ?? 0n).toBe(0n)
+    const transferCall = decodeFunctionData({
+      abi: erc20TransferAbi,
+      data: parsed.data ?? '0x',
+    })
+    expect(transferCall.functionName).toBe('transfer')
+    expect(transferCall.args?.[0]).toBe(recipient)
+    expect(transferCall.args?.[1]).toBe(1_250_000_000_000_000_000n)
     await expect(
       recoverTransactionAddress({
         serializedTransaction: signedTransaction as TransactionSerialized,
@@ -360,14 +369,17 @@ describe('manual Kairos JPYC transfer integration', () => {
       sendRawTransaction: vi.fn().mockRejectedValue(new Error('rejected')),
     })
 
-    await expect(
-      executeJpycTransfer({
+    const error = await executeJpycTransfer({
         intent: createIntent(),
         password: testPassword,
         storage: createStorage(),
         rpcClient: client,
-      }),
-    ).rejects.toBeInstanceOf(JpycTransferBroadcastError)
+      }).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(JpycTransferBroadcastError)
+    expect((error as JpycTransferBroadcastError).transactionHash).toMatch(
+      /^0x[0-9a-f]{64}$/,
+    )
     expect(spies.sendRawTransaction).toHaveBeenCalledOnce()
   })
 
