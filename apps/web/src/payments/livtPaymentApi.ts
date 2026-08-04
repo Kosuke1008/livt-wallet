@@ -171,6 +171,7 @@ export function createLivtPaymentApiClient(
 
   return {
     async getPaymentDetails(paymentId) {
+      // [Flow E] Laravelのsource-neutral payment details APIを読む。
       const response = await safeFetch(
         fetchImplementation,
         endpoint(`/api/payments/${encodePaymentId(paymentId)}`),
@@ -193,6 +194,7 @@ export function createLivtPaymentApiClient(
     },
 
     async login(email, password) {
+      // [Flow I] 決済確認だけに使う短時間tokenを取得する。
       const response = await safeFetch(
         fetchImplementation,
         endpoint('/api/payment/login'),
@@ -234,6 +236,7 @@ export function createLivtPaymentApiClient(
     },
 
     async confirmPayment(paymentId, transactionHash, accessToken) {
+      // [Flow M] 正規化したtxHashをMetaMaskと共通の確認APIへ送る。
       const normalizedHash = normalizeLivtTransactionHash(transactionHash)
       const response = await safeFetch(
         fetchImplementation,

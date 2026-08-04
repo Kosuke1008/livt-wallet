@@ -175,6 +175,7 @@ export function LivtPaymentPanel({
   useEffect(() => {
     let current = true
 
+    // [Flow E] URLの値ではなく、LivT APIから正本の支払い情報を取得する。
     void apiClient
       .getPaymentDetails(request.paymentId)
       .then((value) => {
@@ -226,6 +227,7 @@ export function LivtPaymentPanel({
       return { payment: null, error: null }
     }
     try {
+      // [Flow F] 状態・期限・chain・token・金額・残高を送金前に検証する。
       return {
         payment: createLivtPaymentIntent({
           requestedPaymentId: request.paymentId,
@@ -237,6 +239,7 @@ export function LivtPaymentPanel({
         error: null,
       }
     } catch (error) {
+      // [Flow G] 検証に失敗した場合はintentを作らず送金を止める。
       return {
         payment: null,
         error: getPaymentValidationErrorMessage(error),
@@ -264,6 +267,7 @@ export function LivtPaymentPanel({
     setPassword('')
 
     try {
+      // [Flow I] Wallet秘密情報と分離したLivT決済限定tokenを取得する。
       const result = await apiClient.login(email.trim(), passwordForLogin)
       if (!mounted.current) return
       savePaymentAccessToken(result.token, tokenStorage)
@@ -296,6 +300,7 @@ export function LivtPaymentPanel({
   }
 
   const rememberTransactionHash = (hash: Hash) => {
+    // [Flow L] 結果不明時も再送せず確認だけ再試行できるようtxHashを保存する。
     setTransactionHash(hash)
     try {
       saveKnownPaymentTransactionHash(
@@ -328,6 +333,7 @@ export function LivtPaymentPanel({
   ) => {
     rememberTransactionHash(hash)
     try {
+      // [Flow M] 保存済みtxHashも新規txHashも同じbackend確認APIへ送る。
       await apiClient.confirmPayment(request.paymentId, hash, token)
       if (!isCurrent(generation)) return
       forgetTransactionHash()
@@ -521,6 +527,7 @@ export function LivtPaymentPanel({
       onBack={submissionStatus === 'processing' ? undefined : onBack}
     >
       <h2>LivTのお支払い</h2>
+      {/* [Flow H] backendから取得・検証した支払い内容を署名前に表示する。 */}
       <dl className="transaction-details payment-request-details">
         <div><dt>店舗</dt><dd>{details.store_name}</dd></div>
         <div><dt>金額</dt><dd>{details.display_amount} {details.token_symbol}</dd></div>
@@ -670,6 +677,7 @@ export function LivtPaymentPanel({
       )}
 
       {submissionStatus === 'confirmed' && transactionHash !== null && (
+        // [Flow U] backend検証完了後だけ支払い確認済みとして表示する。
         <div className="transaction-result" aria-live="polite">
           <h3>お支払いが確認されました</h3>
           <p>{submissionMessage}</p>

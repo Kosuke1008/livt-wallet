@@ -331,6 +331,7 @@ function readStartupPaymentIntegration(): StartupPaymentIntegration {
   }
 
   try {
+    // [Flow D] Laravelから渡されたpayment_idだけを検査して支払い画面へ入る。
     const request = parseLivtPaymentRequest(new URL(window.location.href))
     if (request === null) throw new InvalidPaymentRequestError('malformed-id')
     const apiClient = createLivtPaymentApiClient(

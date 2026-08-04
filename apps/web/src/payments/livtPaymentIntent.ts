@@ -76,6 +76,7 @@ export function createLivtPaymentIntent(input: {
   readonly availableBalance: bigint
   readonly now?: Date
 }): ValidatedLivtPayment {
+  // [Flow F] backend情報をWalletの承認済みKairos/JPYC設定と突き合わせる。
   const now = input.now ?? new Date()
 
   if (String(input.details.id) !== input.requestedPaymentId) {

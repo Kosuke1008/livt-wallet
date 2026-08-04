@@ -65,6 +65,7 @@ export async function executeLivtPayment({
   onPhase,
   isCurrent,
 }: ExecuteLivtPaymentOptions): Promise<LivtPaymentResult> {
+  // [Flow J-L] 端末内署名・一度だけのbroadcast・txHash取得を実行する。
   const transfer = await transferExecutor({
     intent,
     password,
@@ -80,6 +81,7 @@ export async function executeLivtPayment({
   }
 
   try {
+    // [Flow M] Wallet側の成功を確定扱いせずbackend verifierへ委ねる。
     await apiClient.confirmPayment(paymentId, transactionHash, accessToken)
   } catch (error) {
     if (error instanceof LivtPaymentApiError) {

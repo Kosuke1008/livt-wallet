@@ -234,7 +234,7 @@ export async function executeJpycTransfer({
   })
 
   onPhase?.({ phase: 'signing', estimatedGas })
-  // 8. 署名が必要な間だけ口座を復元し、解除中の住所との一致も確認する
+  // 8. [Flow J] 署名が必要な間だけ口座を復元し、解除中の住所との一致も確認する
   const transactionHash = await signingAccountProvider.withAccount(
     password,
     intent.sender,
@@ -242,7 +242,7 @@ export async function executeJpycTransfer({
       assertCurrent()
       let serializedTransaction
       try {
-        // 9. 秘密情報を送らず、端末内で取引へ署名する
+        // 9. [Flow J] 秘密情報を送らず、端末内で取引へ署名する
         serializedTransaction = await account.signTransaction({
           chainId: KAIROS_NETWORK.chainId,
           data,
@@ -258,6 +258,7 @@ export async function executeJpycTransfer({
       }
       assertCurrent()
       const expectedTransactionHash = keccak256(serializedTransaction)
+      // [Flow L] 送信結果が不明でも追跡できるtxHashを署名済みデータから算出する。
       onPhase?.({
         phase: 'broadcasting',
         estimatedGas,
@@ -265,7 +266,7 @@ export async function executeJpycTransfer({
       })
       assertCurrent()
       try {
-        // 10. 署名済み取引を一度だけ送り、結果不明でも自動再送しない
+        // 10. [Flow K] 署名済み取引を一度だけ送り、結果不明でも自動再送しない
         const returnedTransactionHash = await rpcClient.sendRawTransaction(
           serializedTransaction,
         )
