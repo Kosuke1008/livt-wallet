@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Address, Hash } from 'viem'
+import type { Address, Hash, Hex } from 'viem'
 import {
   LivtPaymentApiError,
   type LivtPaymentApiClient,
@@ -8,6 +8,7 @@ import {
   executeLivtPayment,
   LivtPaymentConfirmationError,
   LivtPaymentTransactionRevertedError,
+  type LivtFeeDelegatedTransferExecutor,
 } from '../../../src/payments/livtPaymentFlow'
 import { createJpycTransferIntent } from '../../../src/tokens/transferValidation'
 
@@ -93,6 +94,83 @@ describe('LivT payment flow', () => {
     )
     expect(transferExecutor).toHaveBeenCalledOnce()
   })
+
+  it('fee delegated sender署名をsponsorし最終txHashだけを共通confirmへ渡す', async () => {
+    const apiClient = createApiClient()
+    const senderSignedTransaction = `0x31${'ab'.repeat(80)}` as Hex
+    const directExecutor = vi.fn()
+    const feeDelegatedTransferExecutor = vi.fn<LivtFeeDelegatedTransferExecutor>(
+      async (options) => {
+        const sponsoredHash = await options.sponsorTransaction(
+          senderSignedTransaction,
+        )
+        return {
+          status: 'success',
+          transactionHash: sponsoredHash,
+          sender,
+          recipient: intent.recipient,
+          enteredAmount: '125',
+          normalizedAmount: '125',
+          estimatedGas: 50_000n,
+          gasPrice: 25_000_000_000n,
+        }
+      },
+    )
+
+    await expect(
+      executeLivtPayment({
+        paymentId: '42',
+        intent,
+        password: 'wallet-password',
+        accessToken: '1|short-lived-token',
+        apiClient,
+        submissionMode: 'fee-delegated',
+        transferExecutor: directExecutor,
+        feeDelegatedTransferExecutor,
+      }),
+    ).resolves.toEqual({ transactionHash })
+
+    expect(directExecutor).not.toHaveBeenCalled()
+    expect(apiClient.sponsorPayment).toHaveBeenCalledWith(
+      '42',
+      senderSignedTransaction,
+      '1|short-lived-token',
+    )
+    expect(apiClient.confirmPayment).toHaveBeenCalledWith(
+      '42',
+      transactionHash,
+      '1|short-lived-token',
+    )
+  })
+
+  it('sponsor failure時は共通confirmを呼ばず自動再送しない', async () => {
+    const apiClient = createApiClient()
+    vi.mocked(apiClient.sponsorPayment).mockRejectedValue(
+      new LivtPaymentApiError('sponsorship-unknown', 503),
+    )
+    const feeDelegatedTransferExecutor = vi.fn<LivtFeeDelegatedTransferExecutor>(
+      async (options) => {
+        await options.sponsorTransaction(`0x31${'ab'.repeat(80)}`)
+        throw new Error('unreachable')
+      },
+    )
+
+    await expect(
+      executeLivtPayment({
+        paymentId: '42',
+        intent,
+        password: 'wallet-password',
+        accessToken: '1|short-lived-token',
+        apiClient,
+        submissionMode: 'fee-delegated',
+        feeDelegatedTransferExecutor,
+      }),
+    ).rejects.toMatchObject({ reason: 'sponsorship-unknown' })
+
+    expect(feeDelegatedTransferExecutor).toHaveBeenCalledOnce()
+    expect(apiClient.sponsorPayment).toHaveBeenCalledOnce()
+    expect(apiClient.confirmPayment).not.toHaveBeenCalled()
+  })
 })
 
 const intent = createJpycTransferIntent({
@@ -107,8 +185,10 @@ const intent = createJpycTransferIntent({
 function createApiClient(): LivtPaymentApiClient {
   return {
     getPaymentDetails: vi.fn(),
+    getPaymentSponsorshipAvailability: vi.fn().mockResolvedValue(false),
     login: vi.fn(),
     getCurrentUser: vi.fn(),
+    sponsorPayment: vi.fn().mockResolvedValue(transactionHash),
     confirmPayment: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn(),
   }

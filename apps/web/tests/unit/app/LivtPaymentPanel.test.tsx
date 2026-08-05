@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Address, Hash } from 'viem'
 import { LivtPaymentPanel } from '../../../src/app/LivtPaymentPanel'
 import {
+  LivtPaymentApiError,
   savePaymentAccessToken,
   type LivtPaymentApiClient,
   type LivtPaymentDetails,
@@ -13,6 +14,7 @@ import {
 } from '../../../src/payments/livtPaymentApi'
 import { saveKnownPaymentTransactionHash } from '../../../src/payments/livtPaymentProgress'
 import type { LivtPaymentTransferExecutor } from '../../../src/payments/livtPaymentFlow'
+import type { LivtFeeDelegatedTransferExecutor } from '../../../src/payments/livtPaymentFlow'
 import type { JpycTransferResult } from '../../../src/tokens/jpycTransfer'
 import { TransferConfirmationTimeoutError } from '../../../src/tokens/jpycTransfer'
 
@@ -208,14 +210,127 @@ describe('LivtPaymentPanel', () => {
     expect(apiClient.confirmPayment).toHaveBeenCalledOnce()
     expect(view.textContent).toContain('お支払いが確認されました')
   })
+
+  it('fee delegation有効時は送金元KAIAがなくてもLivT負担で支払える', async () => {
+    const apiClient = createApiClient(details, true)
+    const directExecutor = vi.fn<LivtPaymentTransferExecutor>()
+    const feeDelegatedTransferExecutor = vi
+      .fn<LivtFeeDelegatedTransferExecutor>()
+      .mockResolvedValue({
+        status: 'success',
+        transactionHash,
+        sender,
+        recipient: details.recipient_address as Address,
+        enteredAmount: '125',
+        normalizedAmount: '125',
+        estimatedGas: 50_000n,
+        gasPrice: 25_000_000_000n,
+      })
+    const view = await renderPanel({
+      apiClient,
+      transferExecutor: directExecutor,
+      feeDelegatedTransferExecutor,
+      hasNativeBalance: false,
+    })
+
+    expect(view.textContent).toContain('決済手数料はLivTが負担します')
+    expect(view.textContent).not.toContain('KAIA残高が不足しています')
+    await enterSigningPassword(view)
+
+    await act(async () => {
+      findButton(view, '内容を確認してJPYCを送る').click()
+      await flushPromises()
+    })
+
+    expect(directExecutor).not.toHaveBeenCalled()
+    expect(feeDelegatedTransferExecutor).toHaveBeenCalledOnce()
+    expect(apiClient.confirmPayment).toHaveBeenCalledWith(
+      '42',
+      transactionHash,
+      '1|short-lived-token',
+    )
+  })
+
+  it('fee delegation有効時も署名前に既存の直接送信を選べる', async () => {
+    const apiClient = createApiClient(details, true)
+    const directExecutor = vi
+      .fn<LivtPaymentTransferExecutor>()
+      .mockResolvedValue({
+        status: 'success',
+        transactionHash,
+        sender,
+        recipient: details.recipient_address as Address,
+        enteredAmount: '125',
+        normalizedAmount: '125',
+        estimatedGas: 50_000n,
+        gasPrice: 25_000_000_000n,
+      })
+    const feeDelegatedTransferExecutor =
+      vi.fn<LivtFeeDelegatedTransferExecutor>()
+    const view = await renderPanel({
+      apiClient,
+      transferExecutor: directExecutor,
+      feeDelegatedTransferExecutor,
+    })
+
+    await act(async () => {
+      findButton(view, '自分のKAIAで手数料を支払う').click()
+    })
+    expect(view.textContent).toContain('手数料はKAIAで支払います')
+
+    await enterSigningPassword(view)
+    await act(async () => {
+      findButton(view, '内容を確認してJPYCを送る').click()
+      await flushPromises()
+    })
+
+    expect(directExecutor).toHaveBeenCalledOnce()
+    expect(feeDelegatedTransferExecutor).not.toHaveBeenCalled()
+    expect(apiClient.confirmPayment).toHaveBeenCalledWith(
+      '42',
+      transactionHash,
+      '1|short-lived-token',
+    )
+  })
+
+  it('Fee Payer結果不明時は再署名ボタンを出さない', async () => {
+    const apiClient = createApiClient(details, true)
+    const feeDelegatedTransferExecutor = vi
+      .fn<LivtFeeDelegatedTransferExecutor>()
+      .mockRejectedValue(
+        new LivtPaymentApiError('sponsorship-unknown', 503),
+      )
+    const view = await renderPanel({
+      apiClient,
+      feeDelegatedTransferExecutor,
+      hasNativeBalance: false,
+    })
+    await enterSigningPassword(view)
+
+    await act(async () => {
+      findButton(view, '内容を確認してJPYCを送る').click()
+      await flushPromises()
+    })
+
+    expect(view.textContent).toContain('Fee Payerの結果を確認できません')
+    expect(view.textContent).toContain('再度署名・送信しないでください')
+    expect(
+      Array.from(view.querySelectorAll('button')).some((button) =>
+        button.textContent?.includes('内容確認へ戻る'),
+      ),
+    ).toBe(false)
+    expect(apiClient.confirmPayment).not.toHaveBeenCalled()
+  })
 })
 
 async function renderPanel(overrides: {
   readonly apiClient?: LivtPaymentApiClient
   readonly transferExecutor?: LivtPaymentTransferExecutor
+  readonly feeDelegatedTransferExecutor?: LivtFeeDelegatedTransferExecutor
   readonly onBack?: () => void
   readonly storage?: PaymentTokenStorage
   readonly now?: () => Date
+  readonly hasNativeBalance?: boolean
 }): Promise<HTMLDivElement> {
   container = document.createElement('div')
   document.body.append(container)
@@ -229,12 +344,13 @@ async function renderPanel(overrides: {
         request={{ paymentId: '42' }}
         sender={sender}
         availableJpycBalance={1_000_000_000_000_000_000_000n}
-        hasNativeBalance
+        hasNativeBalance={overrides.hasNativeBalance ?? true}
         apiClient={overrides.apiClient ?? createApiClient()}
         onConfirmed={vi.fn().mockResolvedValue(undefined)}
         onBack={overrides.onBack ?? vi.fn()}
         tokenStorage={storage}
         transferExecutor={overrides.transferExecutor}
+        feeDelegatedTransferExecutor={overrides.feeDelegatedTransferExecutor}
         now={overrides.now ?? fixedNow}
       />,
     )
@@ -246,14 +362,19 @@ async function renderPanel(overrides: {
 
 function createApiClient(
   paymentDetails: LivtPaymentDetails = details,
+  feeDelegationAvailable = false,
 ): LivtPaymentApiClient {
   return {
     getPaymentDetails: vi.fn().mockResolvedValue(paymentDetails),
+    getPaymentSponsorshipAvailability: vi
+      .fn()
+      .mockResolvedValue(feeDelegationAvailable),
     login: vi.fn(),
     getCurrentUser: vi.fn().mockResolvedValue({
       id: 7,
       name: 'Panel User',
     }),
+    sponsorPayment: vi.fn().mockResolvedValue(transactionHash),
     confirmPayment: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn().mockResolvedValue(undefined),
   }

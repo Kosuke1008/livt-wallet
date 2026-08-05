@@ -6,6 +6,7 @@ import {
   type JpycTransferResult,
 } from '../tokens/jpycTransfer'
 import type { JpycTransferIntent } from '../tokens/transferValidation'
+import type { ExecuteFeeDelegatedJpycTransferOptions } from '../tokens/feeDelegatedJpycTransfer'
 import {
   LivtPaymentApiError,
   normalizeLivtTransactionHash,
@@ -40,13 +41,30 @@ export type LivtPaymentTransferExecutor = (
   options: ExecuteJpycTransferOptions,
 ) => Promise<JpycTransferResult>
 
+export type LivtFeeDelegatedTransferExecutor = (
+  options: ExecuteFeeDelegatedJpycTransferOptions,
+) => Promise<JpycTransferResult>
+
+const loadFeeDelegatedTransfer: LivtFeeDelegatedTransferExecutor = async (
+  options,
+) => {
+  const { executeFeeDelegatedJpycTransfer } = await import(
+    '../tokens/feeDelegatedJpycTransfer'
+  )
+  return executeFeeDelegatedJpycTransfer(options)
+}
+
+export type LivtPaymentSubmissionMode = 'direct' | 'fee-delegated'
+
 export interface ExecuteLivtPaymentOptions {
   readonly paymentId: string
   readonly intent: JpycTransferIntent
   readonly password: string
   readonly accessToken: string
   readonly apiClient: LivtPaymentApiClient
+  readonly submissionMode?: LivtPaymentSubmissionMode
   readonly transferExecutor?: LivtPaymentTransferExecutor
+  readonly feeDelegatedTransferExecutor?: LivtFeeDelegatedTransferExecutor
   readonly onPhase?: (update: JpycTransferPhaseUpdate) => void
   readonly isCurrent?: () => boolean
 }
@@ -61,17 +79,33 @@ export async function executeLivtPayment({
   password,
   accessToken,
   apiClient,
+  submissionMode = 'direct',
   transferExecutor = executeJpycTransfer,
+  feeDelegatedTransferExecutor = loadFeeDelegatedTransfer,
   onPhase,
   isCurrent,
 }: ExecuteLivtPaymentOptions): Promise<LivtPaymentResult> {
   // [Flow J-L] 端末内署名・一度だけのbroadcast・txHash取得を実行する。
-  const transfer = await transferExecutor({
-    intent,
-    password,
-    onPhase,
-    isCurrent,
-  })
+  const transfer =
+    submissionMode === 'fee-delegated'
+      ? await feeDelegatedTransferExecutor({
+          intent,
+          password,
+          onPhase,
+          isCurrent,
+          sponsorTransaction: (senderSignedTransaction) =>
+            apiClient.sponsorPayment(
+              paymentId,
+              senderSignedTransaction,
+              accessToken,
+            ),
+        })
+      : await transferExecutor({
+          intent,
+          password,
+          onPhase,
+          isCurrent,
+        })
   const transactionHash = normalizeLivtTransactionHash(
     transfer.transactionHash,
   )

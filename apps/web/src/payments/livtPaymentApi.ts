@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Hash } from 'viem'
+import type { Hash, Hex } from 'viem'
 
 const evmAddressPattern = /^0x[0-9a-fA-F]{40}$/
 const atomicAmountPattern = /^(?:0|[1-9]\d*)$/
@@ -59,6 +59,16 @@ const confirmationResponseSchema = z
   .object({ success: z.literal(true) })
   .strict()
 
+const sponsorshipResponseSchema = z
+  .object({
+    transaction_hash: z.string().regex(transactionHashPattern),
+  })
+  .strict()
+
+const sponsorshipAvailabilityResponseSchema = z
+  .object({ available: z.boolean() })
+  .strict()
+
 export type LivtPaymentDetails = z.infer<typeof livtPaymentDetailsSchema>
 export type LivtPaymentLoginResult = z.infer<typeof loginResponseSchema>
 export type LivtPaymentSessionUser = z.infer<
@@ -74,6 +84,9 @@ export type LivtPaymentApiErrorReason =
   | 'receipt-pending'
   | 'duplicate-transaction'
   | 'verification-rejected'
+  | 'sponsorship-rejected'
+  | 'sponsorship-unknown'
+  | 'sponsorship-unavailable'
   | 'backend-unavailable'
   | 'malformed-response'
 
@@ -116,6 +129,7 @@ export type PaymentTokenStorage = Pick<
 
 export interface LivtPaymentApiClient {
   getPaymentDetails(paymentId: string): Promise<LivtPaymentDetails>
+  getPaymentSponsorshipAvailability(paymentId: string): Promise<boolean>
   login(email: string, password: string): Promise<LivtPaymentLoginResult>
   getCurrentUser(accessToken: string): Promise<LivtPaymentSessionUser>
   confirmPayment(
@@ -123,6 +137,11 @@ export interface LivtPaymentApiClient {
     transactionHash: Hash,
     accessToken: string,
   ): Promise<void>
+  sponsorPayment(
+    paymentId: string,
+    senderSignedTransaction: Hex,
+    accessToken: string,
+  ): Promise<Hash>
   logout(accessToken: string): Promise<void>
 }
 
@@ -193,6 +212,38 @@ export function createLivtPaymentApiClient(
       return parseResponse(response, livtPaymentDetailsSchema)
     },
 
+    async getPaymentSponsorshipAvailability(paymentId) {
+      const paymentPath = encodePaymentId(paymentId)
+      let response: Response
+
+      try {
+        response = await safeFetch(
+          fetchImplementation,
+          endpoint(`/api/payments/${paymentPath}/sponsorship`),
+          {
+            headers: { Accept: 'application/json' },
+            cache: 'no-store',
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer',
+          },
+        )
+      } catch {
+        return false
+      }
+
+      if (!response.ok) return false
+
+      try {
+        const result = await parseResponse(
+          response,
+          sponsorshipAvailabilityResponseSchema,
+        )
+        return result.available
+      } catch {
+        return false
+      }
+    },
+
     async login(email, password) {
       // [Flow I] 決済確認だけに使う短時間tokenを取得する。
       const response = await safeFetch(
@@ -251,6 +302,34 @@ export function createLivtPaymentApiClient(
       await parseResponse(response, confirmationResponseSchema)
     },
 
+    async sponsorPayment(
+      paymentId,
+      senderSignedTransaction,
+      accessToken,
+    ) {
+      const normalizedTransaction = normalizeSenderSignedTransaction(
+        senderSignedTransaction,
+      )
+      const response = await safeFetch(
+        fetchImplementation,
+        endpoint(`/api/payments/${encodePaymentId(paymentId)}/sponsor`),
+        authenticatedJsonRequest(accessToken, {
+          sender_signed_tx: normalizedTransaction,
+        }),
+        {
+          timeoutMilliseconds: 130_000,
+          transportFailureReason: 'sponsorship-unknown',
+        },
+      )
+
+      if (!response.ok) {
+        throw await classifySponsorshipError(response)
+      }
+
+      const result = await parseResponse(response, sponsorshipResponseSchema)
+      return normalizeLivtTransactionHash(result.transaction_hash)
+    },
+
     async logout(accessToken) {
       const response = await safeFetch(
         fetchImplementation,
@@ -272,6 +351,20 @@ export function normalizeLivtTransactionHash(value: unknown): Hash {
   }
 
   return value.toLowerCase() as Hash
+}
+
+export function normalizeSenderSignedTransaction(value: unknown): Hex {
+  if (
+    typeof value !== 'string' ||
+    value.length < 4 ||
+    value.length > 8194 ||
+    value.length % 2 !== 0 ||
+    !/^0x[0-9a-fA-F]+$/.test(value)
+  ) {
+    throw new LivtPaymentApiError('sponsorship-rejected')
+  }
+
+  return value.toLowerCase() as Hex
 }
 
 export function loadPaymentAccessToken(
@@ -363,9 +456,16 @@ async function safeFetch(
   fetchImplementation: FetchImplementation,
   input: URL,
   init: RequestInit,
+  options: {
+    readonly timeoutMilliseconds?: number
+    readonly transportFailureReason?: LivtPaymentApiErrorReason
+  } = {},
 ): Promise<Response> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15_000)
+  const timeout = setTimeout(
+    () => controller.abort(),
+    options.timeoutMilliseconds ?? 15_000,
+  )
 
   try {
     return await fetchImplementation(input, {
@@ -373,9 +473,11 @@ async function safeFetch(
       signal: controller.signal,
     })
   } catch (error) {
-    throw new LivtPaymentApiError('backend-unavailable', null, {
-      cause: error,
-    })
+    throw new LivtPaymentApiError(
+      options.transportFailureReason ?? 'backend-unavailable',
+      null,
+      { cause: error },
+    )
   } finally {
     clearTimeout(timeout)
   }
@@ -429,6 +531,51 @@ async function classifyConfirmationError(
             : 'verification-rejected'
 
   return new LivtPaymentApiError(reason, response.status)
+}
+
+async function classifySponsorshipError(
+  response: Response,
+): Promise<LivtPaymentApiError> {
+  if (response.status === 401 || response.status === 403) {
+    return new LivtPaymentApiError('unauthenticated', response.status)
+  }
+  if (response.status === 404) {
+    return new LivtPaymentApiError('payment-not-found', response.status)
+  }
+  if (response.status === 429) {
+    return new LivtPaymentApiError(
+      'sponsorship-unavailable',
+      response.status,
+    )
+  }
+
+  const publicError = await readPublicError(response)
+  if (publicError === 'Already paid') {
+    return new LivtPaymentApiError('already-confirmed', response.status)
+  }
+  if (publicError === 'Expired') {
+    return new LivtPaymentApiError('expired', response.status)
+  }
+  if (publicError === 'Fee sponsorship status is unknown') {
+    return new LivtPaymentApiError('sponsorship-unknown', response.status)
+  }
+  if (publicError === 'Fee sponsorship rejected') {
+    return new LivtPaymentApiError('sponsorship-rejected', response.status)
+  }
+  if (publicError === 'Fee sponsorship is unavailable') {
+    return new LivtPaymentApiError(
+      'sponsorship-unavailable',
+      response.status,
+    )
+  }
+  if (response.status >= 500) {
+    return new LivtPaymentApiError(
+      'sponsorship-unavailable',
+      response.status,
+    )
+  }
+
+  return new LivtPaymentApiError('sponsorship-rejected', response.status)
 }
 
 async function readPublicError(response: Response): Promise<string | null> {

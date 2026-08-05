@@ -15,6 +15,7 @@
     "test:e2e:payment:ui": "corepack pnpm --filter @livt-wallet/web test:e2e:payment:ui",
     "test:e2e:payment:edge-review": "corepack pnpm --filter @livt-wallet/web test:e2e:payment:edge-review",
     "review:kairos-live": "corepack pnpm --filter @livt-wallet/web review:kairos-live",
+    "review:kairos-fee-delegated-live": "corepack pnpm --filter @livt-wallet/web review:kairos-fee-delegated-live",
     "build": "corepack pnpm --filter @livt-wallet/web build"
   }
 }

@@ -15,9 +15,11 @@
     "test:e2e:payment:ui": "node e2e/payment/support/run-payment-e2e.mjs --ui",
     "test:e2e:payment:edge-review": "node e2e/payment/support/run-payment-e2e.mjs --edge-review",
     "review:kairos-live": "node e2e/payment/support/run-live-kairos-review.mjs",
+    "review:kairos-fee-delegated-live": "node e2e/payment/support/run-live-kairos-review.mjs --fee-delegated",
     "build": "tsc -b && vite build"
   },
   "dependencies": {
+    "@kaiachain/viem-ext": "2.1.0",
     "@scure/bip39": "^1.6.0",
     "@vitejs/plugin-react": "latest",
     "react": "latest",

@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
@@ -13,10 +14,20 @@ const backendDirectory = resolve(
   process.env.LIVT_LIVE_BACKEND_DIRECTORY ??
     resolve(walletDirectory, '../jpyc-web3-payment-platform'),
 )
+const feePayerDirectory = resolve(
+  process.env.LIVT_FEE_PAYER_DIRECTORY ??
+    resolve(walletDirectory, '../livt-fee-payer'),
+)
 
 const backendUrl = new URL('http://127.0.0.1:18000')
 const walletUrl = new URL('http://127.0.0.1:14173')
 const kairosRpcUrl = new URL('https://public-en-kairos.node.kaia.io')
+const feeDelegationMode = process.argv.includes('--fee-delegated')
+const feeDelegationUrl = feeDelegationMode
+  ? localFeePayerUrl(
+      process.env.KAIA_FEE_DELEGATION_URL ?? 'http://127.0.0.1:19000',
+    )
+  : null
 const tokenContract = '0xe7c3d8c9a439fede00d2600032d5db0be71c3c29'
 const edgeProfileMarker = 'EdgeKairosLiveReview'
 const minimumPaymentAtomicAmount = 1_000_000_000_000_000_000n
@@ -62,8 +73,16 @@ try {
 async function run() {
   await assertRequiredFiles()
   await assertInteractiveTerminal()
-  await assertPortsAvailable([18000, 14173])
+  await assertPortsAvailable([
+    18000,
+    14173,
+    ...(feeDelegationUrl === null ? [] : [Number(feeDelegationUrl.port)]),
+  ])
   await assertWindowsEdgeAvailable()
+
+  const internalFeePayerKey = feeDelegationMode
+    ? randomBytes(32).toString('hex')
+    : null
 
   const liveEnvironment = {
     ...process.env,
@@ -76,6 +95,13 @@ async function run() {
     KAIROS_ERC20_CONTRACT_ADDRESS: tokenContract,
     WEB3_TOKEN_SYMBOL: 'JPYC',
     WEB3_TOKEN_DECIMALS: '18',
+    KAIA_FEE_DELEGATION_ENABLED: feeDelegationMode ? 'true' : 'false',
+    ...(feeDelegationUrl === null || internalFeePayerKey === null
+      ? {}
+      : {
+          KAIA_FEE_DELEGATION_URL: feeDelegationUrl.origin,
+          KAIA_FEE_DELEGATION_API_KEY: internalFeePayerKey,
+        }),
   }
 
   process.stdout.write('実DBとKairos RPCをread-onlyで事前確認しています…\n')
@@ -86,13 +112,37 @@ async function run() {
     [
       '',
       'このmodeはLaravelが現在設定しているDBへ実データを書き込み、',
-      'Edgeで署名したtransactionを実Kairosへbroadcastします。',
+      feeDelegationMode
+        ? 'Edgeでsender署名したtransactionをLivTのFee Payer経由で実Kairosへbroadcastします。'
+        : 'Edgeで署名したtransactionを実Kairosへbroadcastします。',
       'migration・seed・reset・自動送金は行いません。',
-      '続行する場合は LIVE KAIROS と入力してください: ',
+      `続行する場合は ${confirmationPhrase()} と入力してください: `,
     ].join('\n'),
   )
-  if (confirmation !== 'LIVE KAIROS') {
+  if (confirmation !== confirmationPhrase()) {
     throw new Error('Live Kairos review was cancelled')
+  }
+
+  let feePayerAddress = null
+  if (feeDelegationUrl !== null && internalFeePayerKey !== null) {
+    startService(
+      'corepack',
+      ['pnpm', 'start'],
+      {
+        cwd: feePayerDirectory,
+        env: {
+          ...process.env,
+          FEE_PAYER_API_KEY: internalFeePayerKey,
+          KAIROS_RPC_URL: kairosRpcUrl.href,
+          FEE_PAYER_TOKEN_CONTRACT: tokenContract,
+          FEE_PAYER_PORT: feeDelegationUrl.port,
+        },
+      },
+      'LivT Fee Payer',
+    )
+    feePayerAddress = await waitForFeePayer(
+      new URL('/health', feeDelegationUrl),
+    )
   }
 
   startService(
@@ -139,7 +189,12 @@ async function run() {
       '[1/3 Wallet準備]',
       'EdgeでWalletを作成または解除し、公開アドレスを確認してください。',
       'このprofileは終了後も削除しません。Walletパスワードを忘れないでください。',
-      '送金前に、必要最小限のKairos KAIAと1 JPYC以上をこのアドレスへ用意します。',
+      feeDelegationMode
+        ? [
+            '送金前に1 JPYC以上をこのWalletアドレスへ用意します。送金元のKAIAは不要です。',
+            `LivT Fee Payer ${feePayerAddress} には、Kairos Faucetから必要最小限のKAIAを用意します。`,
+          ].join('\n')
+        : '送金前に、必要最小限のKairos KAIAと1 JPYC以上をこのアドレスへ用意します。',
       '残高がWallet画面へ反映されたらEnterを押してください。',
     ].join('\n'),
   )
@@ -160,21 +215,32 @@ async function run() {
   await openWindowsEdge(new URL(`/pay/${paymentId}`, backendUrl).href, false)
   await waitForEnter(
     [
-      '[2/3 実transaction]',
+      feeDelegationMode
+        ? '[2/3 実Fee Delegated transaction]'
+        : '[2/3 実transaction]',
       'Edgeの支払画面からLivT Walletへ進み、既存のLivT利用者でログインします。',
       '店舗・1 JPYC・chain ID 1001・token contract・送金先を確認してください。',
       'Walletパスワードで署名し、「お支払いが確認されました」まで待ちます。',
-      'transactionは実Kairosへ1回broadcastされます。完了後にEnterを押してください。',
+      feeDelegationMode
+        ? 'sender署名だけをWallet内で行い、LivT Fee Payerが手数料を負担して実Kairosへ1回broadcastします。完了後にEnterを押してください。'
+        : 'transactionは実Kairosへ1回broadcastされます。完了後にEnterを押してください。',
     ].join('\n'),
   )
 
-  const result = await verifyLiveFinalization(paymentId, payment, liveEnvironment)
+  const result = await verifyLiveFinalization(
+    paymentId,
+    payment,
+    liveEnvironment,
+  )
   process.stdout.write(
     [
       '',
       '[3/3 検証完了]',
       '実DB: confirmed、tx_hash・user_id・paid_at設定済み',
       '実Kairos RPC: receipt成功、JPYC Transfer log一致',
+      ...(result.feePayer === null
+        ? []
+        : [`Fee Payer: ${result.feePayer}`]),
       `Kaiascan: https://kairos.kaiascan.io/tx/${result.transactionHash}`,
       '',
     ].join('\n'),
@@ -276,6 +342,14 @@ async function readAndValidatePayment(paymentId) {
   })
   if (!response.ok) throw new Error('Live payment could not be loaded')
   const payment = await response.json()
+  const sponsorshipResponse = await fetch(
+    new URL(`/api/payments/${paymentId}/sponsorship`, backendUrl),
+    { headers: { Accept: 'application/json' } },
+  )
+  if (!sponsorshipResponse.ok) {
+    throw new Error('Live sponsorship capability could not be loaded')
+  }
+  const sponsorship = await sponsorshipResponse.json()
 
   if (
     String(payment.id) !== paymentId ||
@@ -288,6 +362,7 @@ async function readAndValidatePayment(paymentId) {
     payment.token_contract.toLowerCase() !== tokenContract ||
     payment.token_symbol !== 'JPYC' ||
     payment.token_decimals !== 18 ||
+    sponsorship?.available !== feeDelegationMode ||
     typeof payment.recipient_address !== 'string' ||
     !/^0x[0-9a-f]{40}$/.test(payment.recipient_address) ||
     typeof payment.expires_at_iso !== 'string' ||
@@ -331,6 +406,18 @@ async function verifyLiveFinalization(paymentId, payment, environment) {
     throw new Error('Live Kairos receipt is missing or failed')
   }
 
+  let feePayer = null
+  if (feeDelegationMode) {
+    if (
+      receipt.type !== 'TxTypeFeeDelegatedSmartContractExecution' ||
+      typeof receipt.feePayer !== 'string' ||
+      !/^0x[0-9a-f]{40}$/i.test(receipt.feePayer)
+    ) {
+      throw new Error('Live Kairos receipt is not fee delegated')
+    }
+    feePayer = receipt.feePayer.toLowerCase()
+  }
+
   const recipientTopic = `0x${payment.recipient_address.slice(2).padStart(64, '0')}`
   const matchingTransfer = receipt.logs?.find(
     (log) =>
@@ -345,7 +432,13 @@ async function verifyLiveFinalization(paymentId, payment, environment) {
     throw new Error('Live Kairos JPYC Transfer log does not match the payment')
   }
 
-  return { transactionHash: state.tx_hash }
+  return { transactionHash: state.tx_hash, feePayer }
+}
+
+function confirmationPhrase() {
+  return feeDelegationMode
+    ? 'LIVE KAIROS FEE DELEGATION'
+    : 'LIVE KAIROS'
 }
 
 async function runArtisanJson(code, environment) {
@@ -406,12 +499,15 @@ function startService(command, arguments_, options, label) {
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-  const record = { child, label, output: '' }
+  const record = { child, label, output: '', diagnosticBuffer: '' }
   children.push(record)
   for (const stream of [child.stdout, child.stderr]) {
     stream.setEncoding('utf8')
     stream.on('data', (chunk) => {
       record.output = `${record.output}${chunk}`.slice(-8_000)
+      if (label === 'LivT Fee Payer') {
+        forwardFeePayerDiagnostics(record, chunk)
+      }
     })
   }
   child.on('exit', (code) => {
@@ -419,6 +515,17 @@ function startService(command, arguments_, options, label) {
       process.stderr.write(`${label} stopped unexpectedly.\n`)
     }
   })
+}
+
+function forwardFeePayerDiagnostics(record, chunk) {
+  const lines = `${record.diagnosticBuffer}${chunk}`.split(/\r?\n/u)
+  record.diagnosticBuffer = lines.pop()?.slice(-256) ?? ''
+
+  for (const line of lines) {
+    if (/^\[LivT Fee Payer\] [A-Z][A-Z:_-]*$/u.test(line)) {
+      process.stderr.write(`${line}\n`)
+    }
+  }
 }
 
 async function waitForHttp(url) {
@@ -433,6 +540,28 @@ async function waitForHttp(url) {
     await delay(150)
   }
   throw new Error(`Local live review service did not start: ${url.origin}`)
+}
+
+async function waitForFeePayer(url) {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1_000) })
+      const body = response.ok ? await response.json() : null
+      if (
+        body?.status === 'ok' &&
+        body?.network === 'kairos' &&
+        typeof body?.fee_payer_address === 'string' &&
+        /^0x[0-9a-f]{40}$/i.test(body.fee_payer_address)
+      ) {
+        return body.fee_payer_address.toLowerCase()
+      }
+    } catch {
+      // The local sidecar may still be compiling or checking Kairos.
+    }
+    await delay(150)
+  }
+  throw new Error('LivT Fee Payer did not start safely')
 }
 
 async function openWindowsEdge(url, firstPage) {
@@ -462,16 +591,50 @@ async function openWindowsEdge(url, firstPage) {
 
 async function assertRequiredFiles() {
   const { access } = await import('node:fs/promises')
-  for (const path of [
+  const paths = [
     resolve(backendDirectory, 'artisan'),
     resolve(webDirectory, 'package.json'),
-  ]) {
+    ...(feeDelegationMode
+      ? [
+          resolve(feePayerDirectory, 'package.json'),
+          resolve(feePayerDirectory, '.env'),
+        ]
+      : []),
+  ]
+  for (const path of paths) {
     try {
       await access(path)
     } catch {
       throw new Error(`Required live review file is unavailable: ${path}`)
     }
   }
+}
+
+function localFeePayerUrl(value) {
+  if (!/^http:\/\/127\.0\.0\.1:\d{4,5}\/?$/.test(value)) {
+    throw new Error('Invalid local LivT Fee Payer URL')
+  }
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('Invalid local LivT Fee Payer URL')
+  }
+  if (
+    url.protocol !== 'http:' ||
+    url.hostname !== '127.0.0.1' ||
+    !/^\d{4,5}$/.test(url.port) ||
+    Number(url.port) < 1024 ||
+    Number(url.port) > 65535 ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.pathname !== '/' ||
+    url.search !== '' ||
+    url.hash !== ''
+  ) {
+    throw new Error('Invalid local LivT Fee Payer URL')
+  }
+  return url
 }
 
 async function assertInteractiveTerminal() {

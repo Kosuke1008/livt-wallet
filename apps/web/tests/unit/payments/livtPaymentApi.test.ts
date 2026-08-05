@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Hash } from 'viem'
+import type { Hash, Hex } from 'viem'
 import {
   clearPaymentAccessToken,
   createLivtPaymentApiClient,
@@ -83,6 +83,49 @@ describe('LivT payment API client', () => {
     expect(new Headers(init?.headers).has('Authorization')).toBe(false)
   })
 
+  it('任意のsponsorship capabilityを別endpointから取得する', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ available: true }),
+    )
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      fetchMock,
+    )
+
+    await expect(
+      client.getPaymentSponsorshipAvailability('42'),
+    ).resolves.toBe(true)
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://livt.example.test/api/payments/42/sponsorship',
+    )
+  })
+
+  it.each([
+    [new Response('', { status: 404 })],
+    [jsonResponse({ available: 'yes' })],
+  ])('旧backendまたは不正なcapability応答では直接送信へ戻す', async (response) => {
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      vi.fn<typeof fetch>().mockResolvedValue(response),
+    )
+
+    await expect(
+      client.getPaymentSponsorshipAvailability('42'),
+    ).resolves.toBe(false)
+  })
+
+  it('capability transport failureでも既存の直接送信を維持する', async () => {
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      vi.fn<typeof fetch>().mockRejectedValue(new Error('offline')),
+    )
+
+    await expect(
+      client.getPaymentSponsorshipAvailability('42'),
+    ).resolves.toBe(false)
+  })
+
   it('normalized txHashだけを既存confirm endpointへBearerで送る', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({ success: true }),
@@ -109,6 +152,115 @@ describe('LivT payment API client', () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       tx_hash: transactionHash,
     })
+  })
+
+  it('sender署名済みraw transactionだけをsponsor endpointへBearerで送る', async () => {
+    const senderSignedTransaction = `0x31${'AB'.repeat(80)}` as Hex
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ transaction_hash: transactionHash }),
+    )
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      fetchMock,
+    )
+
+    await expect(
+      client.sponsorPayment(
+        '42',
+        senderSignedTransaction,
+        '1|short-lived-payment-token',
+      ),
+    ).resolves.toBe(transactionHash)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe(
+      'https://livt.example.test/api/payments/42/sponsor',
+    )
+    expect(init?.method).toBe('POST')
+    expect(new Headers(init?.headers).get('Authorization')).toBe(
+      'Bearer 1|short-lived-payment-token',
+    )
+    expect(JSON.parse(String(init?.body))).toEqual({
+      sender_signed_tx: senderSignedTransaction.toLowerCase(),
+    })
+    expect(String(init?.body)).not.toContain('wallet-password')
+  })
+
+  it.each([
+    [401, { error: 'Unauthenticated user' }, 'unauthenticated'],
+    [400, { error: 'Already paid' }, 'already-confirmed'],
+    [400, { error: 'Expired' }, 'expired'],
+    [502, { error: 'Fee sponsorship rejected' }, 'sponsorship-rejected'],
+    [429, { error: 'Too Many Attempts.' }, 'sponsorship-unavailable'],
+    [503, { error: 'Fee sponsorship status is unknown' }, 'sponsorship-unknown'],
+    [503, { error: 'Fee sponsorship is unavailable' }, 'sponsorship-unavailable'],
+  ] as const)(
+    'sponsor error HTTP %sを%sへ分類する',
+    async (status, body, reason) => {
+      const client = createLivtPaymentApiClient(
+        new URL('https://livt.example.test/'),
+        vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(body, status)),
+      )
+
+      const error = await client
+        .sponsorPayment('42', '0x3101', '1|token')
+        .catch((caught: unknown) => caught)
+
+      expect(error).toBeInstanceOf(LivtPaymentApiError)
+      expect((error as LivtPaymentApiError).reason).toBe(reason)
+    },
+  )
+
+  it('malformed sponsor responseとraw transactionを拒否する', async () => {
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({ transaction_hash: 'private provider output' }),
+      ),
+    )
+
+    await expectApiError(
+      client.sponsorPayment('42', '0x3101', '1|token'),
+      'malformed-response',
+    )
+    await expectApiError(
+      client.sponsorPayment('42', 'not-hex' as Hex, '1|token'),
+      'sponsorship-rejected',
+    )
+  })
+
+  it('sponsor transport failureを送信結果不明として扱う', async () => {
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      vi.fn<typeof fetch>().mockRejectedValue(
+        new Error('private backend connection failed'),
+      ),
+    )
+
+    await expectApiError(
+      client.sponsorPayment('42', '0x3101', '1|token'),
+      'sponsorship-unknown',
+    )
+  })
+
+  it('sponsor responseが停止した場合はbackend上限後に結果不明とする', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn<typeof fetch>((_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      }),
+    )
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      fetchMock,
+    )
+    const request = client.sponsorPayment('42', '0x3101', '1|token')
+    const assertion = expectApiError(request, 'sponsorship-unknown')
+
+    await vi.advanceTimersByTimeAsync(130_000)
+    await assertion
   })
 
   it('限定tokenをsafe payment session endpointだけで検証する', async () => {

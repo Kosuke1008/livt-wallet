@@ -47,6 +47,7 @@ import {
   executeLivtPayment,
   LivtPaymentConfirmationError,
   LivtPaymentTransactionRevertedError,
+  type LivtFeeDelegatedTransferExecutor,
   type LivtPaymentTransferExecutor,
 } from '../payments/livtPaymentFlow'
 import {
@@ -82,6 +83,7 @@ interface LivtPaymentPanelProps {
   readonly onBack: () => void
   readonly tokenStorage?: PaymentTokenStorage
   readonly transferExecutor?: LivtPaymentTransferExecutor
+  readonly feeDelegatedTransferExecutor?: LivtFeeDelegatedTransferExecutor
   readonly now?: () => Date
 }
 
@@ -94,6 +96,7 @@ type SubmissionStatus =
   | 'reviewing'
   | 'processing'
   | 'pending'
+  | 'sponsorship-unknown'
   | 'confirmed'
   | 'failed'
 
@@ -112,9 +115,13 @@ export function LivtPaymentPanel({
   onBack,
   tokenStorage = sessionStorage,
   transferExecutor,
+  feeDelegatedTransferExecutor,
   now = () => new Date(),
 }: LivtPaymentPanelProps) {
   const [details, setDetails] = useState<LivtPaymentDetails | null>(null)
+  const [feeDelegationAvailable, setFeeDelegationAvailable] =
+    useState(false)
+  const [preferFeeDelegation, setPreferFeeDelegation] = useState(true)
   const [detailsError, setDetailsError] = useState<string | null>(null)
   const [isLoadingDetails, setIsLoadingDetails] = useState(true)
   const [initialTransactionHash] = useState<Hash | null>(() =>
@@ -188,6 +195,15 @@ export function LivtPaymentPanel({
         if (current) setIsLoadingDetails(false)
       })
 
+    void apiClient
+      .getPaymentSponsorshipAvailability(request.paymentId)
+      .then((available) => {
+        if (current) setFeeDelegationAvailable(available)
+      })
+      .catch(() => {
+        if (current) setFeeDelegationAvailable(false)
+      })
+
     return () => {
       current = false
     }
@@ -253,6 +269,8 @@ export function LivtPaymentPanel({
     sender,
   ])
   const validatedPayment = paymentValidation.payment
+  const useFeeDelegation =
+    feeDelegationAvailable && preferFeeDelegation
   const displayedDetailsError =
     detailsError ??
     (transactionHash === null ? paymentValidation.error : null)
@@ -420,7 +438,9 @@ export function LivtPaymentPanel({
         password: passwordForSigning,
         accessToken,
         apiClient,
+        submissionMode: useFeeDelegation ? 'fee-delegated' : 'direct',
         transferExecutor,
+        feeDelegatedTransferExecutor,
         isCurrent: () => isCurrent(generation),
         onPhase: (update) => {
           if (!isCurrent(generation)) return
@@ -451,8 +471,15 @@ export function LivtPaymentPanel({
         setSubmissionStatus('failed')
         setSubmissionMessage('取引はチェーン上で取り消されました。')
       } else if (error instanceof LivtPaymentApiError) {
-        setSubmissionStatus('failed')
-        setSubmissionMessage(getDetailsErrorMessage(error))
+        if (error.reason === 'sponsorship-unknown') {
+          setSubmissionStatus('sponsorship-unknown')
+          setSubmissionMessage(
+            'Fee Payerへの依頼結果を確認できません。transactionが送信済みの可能性があるため、再度署名・送信しないでください。',
+          )
+        } else {
+          setSubmissionStatus('failed')
+          setSubmissionMessage(getDetailsErrorMessage(error))
+        }
       } else if (isPaymentValidationError(error)) {
         setSubmissionStatus('failed')
         setSubmissionMessage(getPaymentValidationErrorMessage(error))
@@ -540,19 +567,23 @@ export function LivtPaymentPanel({
       </dl>
       <p className="warning">
         QRやURLの金額ではなく、LivTから取得した内容を表示しています。
-        手数料はKAIAで支払います。
+        {useFeeDelegation
+          ? ' 決済手数料はLivTが負担します。'
+          : ' 手数料はKAIAで支払います。'}
       </p>
 
       {availableJpycBalance === null && jpycBalanceError === null && (
         <p role="status">JPYC残高を確認しています…</p>
       )}
 
-      {(jpycBalanceError !== null || nativeBalanceError !== null) && (
+      {(jpycBalanceError !== null ||
+        (!useFeeDelegation && nativeBalanceError !== null)) && (
         <div className="payment-balance-error">
           {jpycBalanceError !== null && (
             <p role="alert">{jpycBalanceError}</p>
           )}
-          {nativeBalanceError !== null && (
+          {!useFeeDelegation &&
+            nativeBalanceError !== null && (
             <p role="alert">{nativeBalanceError}</p>
           )}
           {onRetryBalances !== undefined && (
@@ -618,12 +649,13 @@ export function LivtPaymentPanel({
       {authenticationStatus === 'authenticated' &&
         submissionStatus === 'reviewing' && (
           <div className="payment-confirmation">
-            {!hasNativeBalance &&
+            {!useFeeDelegation &&
+              !hasNativeBalance &&
               nativeBalanceError === null &&
               !isNativeBalanceLoading && (
               <p role="alert">手数料に必要なKAIA残高が不足しています。</p>
             )}
-            {isNativeBalanceLoading && (
+            {!useFeeDelegation && isNativeBalanceLoading && (
               <p role="status">KAIA残高を確認しています…</p>
             )}
             <label htmlFor="livt-payment-signing-password">
@@ -642,15 +674,27 @@ export function LivtPaymentPanel({
               disabled={
                 validatedPayment === null ||
                 isJpycBalanceLoading ||
-                isNativeBalanceLoading ||
+                (!useFeeDelegation && isNativeBalanceLoading) ||
                 jpycBalanceError !== null ||
-                nativeBalanceError !== null ||
-                !hasNativeBalance ||
+                (!useFeeDelegation &&
+                  nativeBalanceError !== null) ||
+                (!useFeeDelegation && !hasNativeBalance) ||
                 signingPassword.length === 0
               }
             >
               内容を確認してJPYCを送る
             </button>
+            {feeDelegationAvailable && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setPreferFeeDelegation((current) => !current)}
+              >
+                {useFeeDelegation
+                  ? '自分のKAIAで手数料を支払う'
+                  : 'LivTの手数料負担に戻す'}
+              </button>
+            )}
             <button type="button" className="secondary" onClick={onBack}>
               支払わずに戻る
             </button>
@@ -673,6 +717,14 @@ export function LivtPaymentPanel({
               送金せず確認だけ再試行
             </button>
           )}
+        </div>
+      )}
+
+      {submissionStatus === 'sponsorship-unknown' && (
+        <div className="transaction-result" aria-live="polite">
+          <h3>Fee Payerの結果を確認できません</h3>
+          <p role="alert">{submissionMessage}</p>
+          <p>この画面を保持したまま、LivT管理者へ確認してください。</p>
         </div>
       )}
 
@@ -771,6 +823,12 @@ function getDetailsErrorMessage(error: unknown): string {
     }
     if (error.reason === 'malformed-response') {
       return 'LivTの決済情報を安全に確認できませんでした。'
+    }
+    if (error.reason === 'sponsorship-rejected') {
+      return 'LivTのFee Payerに決済を受け付けてもらえませんでした。'
+    }
+    if (error.reason === 'sponsorship-unavailable') {
+      return 'LivTのFee Payerを利用できません。時間をおいて再試行してください。'
     }
   }
   return 'LivTへ接続できませんでした。時間をおいて再試行してください。'
