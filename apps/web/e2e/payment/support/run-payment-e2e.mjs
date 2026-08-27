@@ -423,18 +423,22 @@ async function openWindowsEdgeReviewPage(url, profileName, firstPage) {
     "$candidates = @('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe')",
     '$edge = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1',
     "if ($null -eq $edge) { throw 'Microsoft Edge is unavailable' }",
-    `$response = Invoke-WebRequest -Uri '${parsedUrl.href}' -UseBasicParsing -TimeoutSec 5`,
-    "if ($response.StatusCode -ne 200) { throw 'WSL review URL is unavailable' }",
     `$arguments = @('--user-data-dir="' + $profile + '"', '--no-first-run', '--no-default-browser-check', '--disable-features=msEdgeFirstRunExperience', '--auto-open-devtools-for-tabs', '${windowArgument}', '${parsedUrl.href}')`,
     'Start-Process -FilePath $edge -ArgumentList $arguments | Out-Null',
   ].join('; ')
 
-  await runCommand(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', script],
-    { timeout: 15_000 },
-  )
-  await delay(firstPage ? 1_500 : 500)
+  try {
+    await runCommand(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { timeout: 15_000 },
+    )
+    await delay(firstPage ? 1_500 : 500)
+  } catch {
+    process.stdout.write(
+      `Edgeを自動起動できませんでした。次のURLをブラウザで開いてください。\n${parsedUrl.href}\n\n`,
+    )
+  }
 }
 
 async function assertEdgeReviewAvailable() {

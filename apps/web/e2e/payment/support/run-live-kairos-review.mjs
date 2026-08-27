@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { decodeFunctionResult } from 'viem'
+import { assertFeeDelegatedReceipt } from './kairos-receipt.mjs'
 
 const execFileAsync = promisify(execFile)
 const webDirectory = resolve(fileURLToPath(new URL('../../..', import.meta.url)))
@@ -219,6 +220,13 @@ async function run() {
         ? '[2/3 実Fee Delegated transaction]'
         : '[2/3 実transaction]',
       'Edgeの支払画面からLivT Walletへ進み、既存のLivT利用者でログインします。',
+      ...(feeDelegationMode
+        ? [
+            'MetaMaskではなく「LivT Walletで支払う」を選択してください。',
+            'Wallet確認画面に「決済手数料はLivTが負担します」と表示されていることを確認してください。',
+            '「自分のKAIAで手数料を支払う」は直接送信への切替ボタンなので、このレビューでは押さないでください。',
+          ]
+        : []),
       '店舗・1 JPYC・chain ID 1001・token contract・送金先を確認してください。',
       'Walletパスワードで署名し、「お支払いが確認されました」まで待ちます。',
       feeDelegationMode
@@ -408,14 +416,15 @@ async function verifyLiveFinalization(paymentId, payment, environment) {
 
   let feePayer = null
   if (feeDelegationMode) {
-    if (
-      receipt.type !== 'TxTypeFeeDelegatedSmartContractExecution' ||
-      typeof receipt.feePayer !== 'string' ||
-      !/^0x[0-9a-f]{40}$/i.test(receipt.feePayer)
-    ) {
-      throw new Error('Live Kairos receipt is not fee delegated')
-    }
-    feePayer = receipt.feePayer.toLowerCase()
+    // eth_getTransactionReceipt intentionally returns the Ethereum-compatible
+    // receipt shape. Kaia's fee-payer metadata is exposed only by the
+    // Kaia-specific receipt method, so bind both receipts to the same inclusion.
+    const kaiaReceipt = await rpc('kaia_getTransactionReceipt', [state.tx_hash])
+    feePayer = assertFeeDelegatedReceipt({
+      ethereumReceipt: receipt,
+      kaiaReceipt,
+      transactionHash: state.tx_hash,
+    })
   }
 
   const recipientTopic = `0x${payment.recipient_address.slice(2).padStart(64, '0')}`
@@ -575,18 +584,22 @@ async function openWindowsEdge(url, firstPage) {
     "$candidates = @('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe')",
     '$edge = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1',
     "if ($null -eq $edge) { throw 'Microsoft Edge is unavailable' }",
-    `$response = Invoke-WebRequest -Uri '${parsed.href}' -UseBasicParsing -TimeoutSec 5`,
-    "if ($response.StatusCode -ne 200) { throw 'WSL live review URL is unavailable' }",
     `$arguments = @('--user-data-dir="' + $profile + '"', '--no-first-run', '--no-default-browser-check', '--disable-features=msEdgeFirstRunExperience', '--auto-open-devtools-for-tabs', '${windowArgument}', '${parsed.href}')`,
     'Start-Process -FilePath $edge -ArgumentList $arguments | Out-Null',
   ].join('; ')
-  await execFileAsync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', script],
-    { timeout: 15_000 },
-  )
-  edgeStarted = true
-  await delay(firstPage ? 1_500 : 500)
+  try {
+    await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { timeout: 15_000 },
+    )
+    edgeStarted = true
+    await delay(firstPage ? 1_500 : 500)
+  } catch {
+    process.stdout.write(
+      `Edgeを自動起動できませんでした。次のURLをブラウザで開いてください。\n${parsed.href}\n\n`,
+    )
+  }
 }
 
 async function assertRequiredFiles() {
