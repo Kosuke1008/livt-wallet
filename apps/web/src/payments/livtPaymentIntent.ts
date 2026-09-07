@@ -1,5 +1,5 @@
 import { maxUint256, type Address } from 'viem'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
+import { ACTIVE_NETWORK_PROFILE } from '../blockchain/networkProfiles'
 import { normalizeEvmAddress } from '../blockchain/address'
 import { approvedJpycToken } from '../tokens/tokenRegistry'
 import {
@@ -96,8 +96,8 @@ export function createLivtPaymentIntent(input: {
   }
 
   if (
-    input.details.chain_id !== KAIROS_NETWORK.chainId ||
-    input.details.network.toLowerCase() !== 'kairos'
+    input.details.chain_id !== ACTIVE_NETWORK_PROFILE.chainId ||
+    input.details.network !== ACTIVE_NETWORK_PROFILE.id
   ) {
     throw new UnsupportedPaymentChainError()
   }

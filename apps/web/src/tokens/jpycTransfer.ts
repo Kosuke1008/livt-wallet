@@ -8,8 +8,9 @@ import {
   type Hash,
   type LocalAccount,
 } from 'viem'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
-import { verifyKairosChain } from '../blockchain/kairosChainVerification'
+import { assertActiveNetworkExecutionAllowed } from '../blockchain/activeNetwork'
+import { ACTIVE_NETWORK_PROFILE } from '../blockchain/networkProfiles'
+import { verifyActiveNetworkChain } from '../blockchain/networkChainVerification'
 import {
   isKairosRpcTransportError,
   toKairosRpcError,
@@ -158,6 +159,9 @@ export async function executeJpycTransfer({
   signingAccountProvider = storedSigningAccountProvider,
   isCurrent = () => true,
 }: ExecuteJpycTransferOptions): Promise<JpycTransferResult> {
+  // Phase 1 permits Mainnet profile validation/read-only use, never signing.
+  assertActiveNetworkExecutionAllowed()
+
   const assertCurrent = () => {
     if (!isCurrent()) throw new StaleTransferRequestError()
   }
@@ -175,9 +179,9 @@ export async function executeJpycTransfer({
     throw new InvalidTransferAmountError('uint256-overflow')
   }
 
-  // 2. RPCのchain IDがKaia Kairosの1001であることを確認する
+  // 2. RPCのchain IDがactive profileと一致することを確認する
   onPhase?.({ phase: 'simulating' })
-  await verifyKairosChain(rpcClient)
+  await verifyActiveNetworkChain(rpcClient)
   assertCurrent()
   // 3. 契約コード、symbol、decimalsが承認済みJPYCの設定と一致するか確認する
   await validateErc20Token(token, rpcClient)
@@ -244,7 +248,7 @@ export async function executeJpycTransfer({
       try {
         // 9. [Flow J] 秘密情報を送らず、端末内で取引へ署名する
         serializedTransaction = await account.signTransaction({
-          chainId: KAIROS_NETWORK.chainId,
+          chainId: ACTIVE_NETWORK_PROFILE.chainId,
           data,
           gas: estimatedGas,
           gasPrice,

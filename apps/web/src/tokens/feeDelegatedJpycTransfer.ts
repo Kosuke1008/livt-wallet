@@ -2,7 +2,6 @@ import {
   TxType,
   createWalletClient,
   http,
-  kairos,
   type LocalAccount as KaiaLocalAccount,
 } from '@kaiachain/viem-ext'
 import {
@@ -13,8 +12,12 @@ import {
   type Hash,
   type Hex,
 } from 'viem'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
-import { verifyKairosChain } from '../blockchain/kairosChainVerification'
+import {
+  assertActiveFeeDelegationExecutionAllowed,
+  getActiveKaiaSdkChain,
+} from '../blockchain/activeNetwork'
+import { ACTIVE_NETWORK_PROFILE } from '../blockchain/networkProfiles'
+import { verifyActiveNetworkChain } from '../blockchain/networkChainVerification'
 import {
   isKairosRpcTransportError,
   toKairosRpcError,
@@ -83,6 +86,9 @@ export async function executeFeeDelegatedJpycTransfer({
   signingAccountProvider = storedSigningAccountProvider,
   isCurrent = () => true,
 }: ExecuteFeeDelegatedJpycTransferOptions): Promise<JpycTransferResult> {
+  // Mainnet fee delegation has no signer/broadcast adapter in Phase 1.
+  assertActiveFeeDelegationExecutionAllowed()
+
   const assertCurrent = () => {
     if (!isCurrent()) throw new StaleTransferRequestError()
   }
@@ -100,7 +106,7 @@ export async function executeFeeDelegatedJpycTransfer({
   }
 
   onPhase?.({ phase: 'simulating' })
-  await verifyKairosChain(rpcClient)
+  await verifyActiveNetworkChain(rpcClient)
   assertCurrent()
   await validateErc20Token(token, rpcClient)
   assertCurrent()
@@ -155,12 +161,12 @@ export async function executeFeeDelegatedJpycTransfer({
           // viem-ext owns a compatible viem dependency, so adapt the same
           // structural LocalAccount without copying any private material.
           account: account as unknown as KaiaLocalAccount,
-          chain: kairos,
-          transport: http(KAIROS_NETWORK.rpcUrl),
+          chain: getActiveKaiaSdkChain(),
+          transport: http(ACTIVE_NETWORK_PROFILE.rpcUrl),
         })
         const signedTransaction = await senderWallet.signTransaction({
           type: TxType.FeeDelegatedSmartContractExecution,
-          chainId: KAIROS_NETWORK.chainId,
+          chainId: ACTIVE_NETWORK_PROFILE.chainId,
           nonce,
           gasPrice,
           gasLimit: feeDelegatedGasLimit,

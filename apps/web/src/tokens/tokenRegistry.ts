@@ -3,7 +3,7 @@ import {
   InvalidAddressError,
   normalizeEvmAddress,
 } from '../blockchain/address'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
+import { ACTIVE_NETWORK_PROFILE } from '../blockchain/networkProfiles'
 
 export interface Erc20TokenConfiguration {
   readonly id: string
@@ -48,7 +48,7 @@ export class UnsupportedTokenError extends Error {
 export function defineApprovedToken(
   input: Erc20TokenConfigurationInput,
 ): Erc20TokenConfiguration {
-  if (input.chainId !== KAIROS_NETWORK.chainId) {
+  if (input.chainId !== ACTIVE_NETWORK_PROFILE.chainId) {
     throw new UnsupportedTokenChainError(input.chainId)
   }
 
@@ -66,11 +66,11 @@ export function defineApprovedToken(
 export const approvedJpycToken = Object.freeze(
   defineApprovedToken({
     id: 'jpyc',
-    chainId: KAIROS_NETWORK.chainId,
-    contractAddress: '0xe7c3d8c9a439fede00d2600032d5db0be71c3c29',
+    chainId: ACTIVE_NETWORK_PROFILE.chainId,
+    contractAddress: ACTIVE_NETWORK_PROFILE.jpyc.contract,
     displayName: 'JPYC',
-    expectedSymbol: 'JPYC',
-    expectedDecimals: 18,
+    expectedSymbol: ACTIVE_NETWORK_PROFILE.jpyc.symbol,
+    expectedDecimals: ACTIVE_NETWORK_PROFILE.jpyc.decimals,
   }),
 )
 

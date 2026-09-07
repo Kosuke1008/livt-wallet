@@ -1,17 +1,14 @@
-import { createPublicClient, http, type PublicClient } from 'viem'
-import { kairosChain, KAIROS_NETWORK } from './kairos'
+import {
+  activeNetworkPublicClient,
+  createActiveNetworkPublicClient,
+  type ActiveNetworkPublicClient,
+} from './networkClient'
 
-export type KairosPublicClient = PublicClient<ReturnType<typeof http>, typeof kairosChain>
+// Compatibility exports for existing Kairos-focused tests and consumers.
+export type KairosPublicClient = ActiveNetworkPublicClient
 
 export function createKairosPublicClient(): KairosPublicClient {
-  return createPublicClient({
-    chain: kairosChain,
-    transport: http(KAIROS_NETWORK.rpcUrl, {
-      retryCount: 0,
-      timeout: 10_000,
-    }),
-  })
+  return createActiveNetworkPublicClient()
 }
 
-export const kairosPublicClient = createKairosPublicClient()
-
+export const kairosPublicClient = activeNetworkPublicClient

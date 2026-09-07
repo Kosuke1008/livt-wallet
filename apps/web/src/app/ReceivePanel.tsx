@@ -1,5 +1,5 @@
 import type { Address } from 'viem'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
+import { ACTIVE_NETWORK_PROFILE } from '../blockchain/networkProfiles'
 import { AddressCopyButton } from './AddressCopyButton'
 
 interface ReceivePanelProps {
@@ -22,7 +22,7 @@ export function ReceivePanel({ address, onBack }: ReceivePanelProps) {
         <p className="eyebrow">受け取り</p>
         <h2 id="receive-title">JPYCを受け取る</h2>
         <p>
-          Kaia Kairos上のJPYCを、次のウォレットアドレスへ送ってください。
+          {ACTIVE_NETWORK_PROFILE.chainName}上のJPYCを、次のウォレットアドレスへ送ってください。
         </p>
       </header>
 
@@ -35,17 +35,17 @@ export function ReceivePanel({ address, onBack }: ReceivePanelProps) {
       <dl className="network-details">
         <div>
           <dt>ネットワーク</dt>
-          <dd>{KAIROS_NETWORK.name}</dd>
+          <dd>{ACTIVE_NETWORK_PROFILE.chainName}</dd>
         </div>
         <div>
           <dt>チェーンID</dt>
-          <dd>{KAIROS_NETWORK.chainId}</dd>
+          <dd>{ACTIVE_NETWORK_PROFILE.chainId}</dd>
         </div>
       </dl>
 
       <p className="warning">
-        異なるネットワークから送ると、このウォレットに表示されない場合があります。必ずKaia
-        Kairos（チェーンID 1001）を選んでください。
+        異なるネットワークから送ると、このウォレットに表示されない場合があります。必ず
+        {ACTIVE_NETWORK_PROFILE.chainName}（チェーンID {ACTIVE_NETWORK_PROFILE.chainId}）を選んでください。
       </p>
     </section>
   )

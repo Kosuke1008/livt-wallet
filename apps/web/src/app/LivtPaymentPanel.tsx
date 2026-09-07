@@ -6,8 +6,11 @@ import {
   type ReactNode,
 } from 'react'
 import type { Address, Hash } from 'viem'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
-import { RpcChainMismatchError } from '../blockchain/kairosChainVerification'
+import {
+  ACTIVE_NETWORK_PROFILE,
+  NetworkExecutionDisabledError,
+} from '../blockchain/networkProfiles'
+import { RpcChainMismatchError } from '../blockchain/networkChainVerification'
 import { KairosRpcError } from '../blockchain/kairosRpcError'
 import {
   IncorrectPasswordError,
@@ -735,7 +738,7 @@ export function LivtPaymentPanel({
           <p>{submissionMessage}</p>
           <p className="hash">取引番号: {transactionHash}</p>
           <a
-            href={`${KAIROS_NETWORK.blockExplorerUrl}/tx/${transactionHash}`}
+            href={`${ACTIVE_NETWORK_PROFILE.explorerUrl}/tx/${transactionHash}`}
             target="_blank"
             rel="noreferrer"
           >
@@ -903,6 +906,9 @@ function getConfirmationErrorMessage(error: unknown): string {
 }
 
 function getTransferErrorMessage(error: unknown): string {
+  if (error instanceof NetworkExecutionDisabledError) {
+    return 'このnetworkでは決済送信が無効です。transactionには署名していません。'
+  }
   if (error instanceof InsufficientKairosGasError) {
     return '送金手数料に必要なKAIAが不足しています。'
   }
@@ -910,7 +916,7 @@ function getTransferErrorMessage(error: unknown): string {
     return 'Kairos RPCへ接続できませんでした。送金は行われていません。'
   }
   if (error instanceof RpcChainMismatchError) {
-    return '接続中のRPCがKaia Kairosではないため送金を止めました。'
+    return `接続中のRPCが${ACTIVE_NETWORK_PROFILE.chainName}ではないため送金を止めました。`
   }
   if (
     error instanceof InvalidTokenContractError ||
@@ -957,6 +963,8 @@ function getProcessingMessage(
 ): string {
   if (phase === 'simulating') return '接続先と送金内容を検証しています…'
   if (phase === 'signing') return 'この端末内で署名しています…'
-  if (phase === 'broadcasting') return 'Kairosへ送信しています…'
+  if (phase === 'broadcasting') {
+    return `${ACTIVE_NETWORK_PROFILE.chainName}へ送信しています…`
+  }
   return 'LivTでtransactionを確認しています…'
 }

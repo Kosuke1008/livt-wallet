@@ -3,7 +3,7 @@
 LivT Walletは、React・TypeScript・viemで開発している非カストディ型ブラウザWalletです。
 
 Walletの作成、暗号化保存、解除、JPYC残高確認、送受金、LivT決済をブラウザ内で行います。
-現在はKaia Kairosと承認済みJPYCだけをサポートします。
+実行可能な決済networkは現在もKaia Kairosと承認済みJPYCだけです。
 
 > Kairos実証・学習用です。Mainnetや実資産には対応していません。
 
@@ -33,6 +33,20 @@ Walletの作成、暗号化保存、解除、JPYC残高確認、送受金、LivT
 
 任意トークンのimportやcontract address入力はサポートしません。bytecode、`symbol()`、
 `decimals()`をKairosから読み取り、承認済み設定と一致した場合だけ利用します。
+
+`kairos`と`kaia-mainnet`を共通profileとして定義していますが、Mainnet profileは
+Phase 1の設定検証・read-only準備専用です。Mainnetの直接送信、署名、Fee
+Delegationは常に拒否します。networkはbuild modeから推測せず、次のように指定します。
+
+```dotenv
+VITE_BLOCKCHAIN_NETWORK=kairos
+VITE_BLOCKCHAIN_KAIROS_RPC_URL=https://public-en-kairos.node.kaia.io
+VITE_MAINNET_PAYMENTS_ENABLED=false
+```
+
+移行前Walletとの互換性のため、selector未指定時だけKairosを安全な既定値とします。
+`VITE_KAIROS_RPC_URL`も移行期間中は利用できます。Mainnetが暗黙選択されることは
+ありません。
 
 ## LivT決済フロー
 
@@ -104,7 +118,7 @@ Fee Delegated runnerはLaravel、Wallet、Fee Payerをまとめて起動し、�
 ```text
 apps/web/src/app          UI・画面遷移
 apps/web/src/wallet       Wallet生成・暗号化・保存・解除
-apps/web/src/blockchain   Kairos RPC境界
+apps/web/src/blockchain   network profileとRPC境界
 apps/web/src/tokens       JPYC検証・署名・送信
 apps/web/src/payments     LivT決済APIとフロー
 apps/web/tests            unit / integration test
@@ -114,7 +128,7 @@ docs                      設計・レビュー手順
 
 ## 現在サポートしないもの
 
-- Kaia Mainnet
+- Kaia Mainnetでの署名・送信・Fee Delegation
 - 任意トークン
 - NFT、swap、価格チャート、トークン購入
 - 外部管理型Fee Delegation Service

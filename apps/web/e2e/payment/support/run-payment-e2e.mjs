@@ -81,10 +81,12 @@ async function run() {
     QUEUE_CONNECTION: 'sync',
     LOG_CHANNEL: 'stderr',
     LOG_LEVEL: 'warning',
+    BLOCKCHAIN_NETWORK: 'kairos',
     WEB3_NETWORK: 'kairos',
     WEB3_CHAIN_NAME: 'Kaia Kairos',
     WEB3_TOKEN_SYMBOL: 'JPYC',
     WEB3_TOKEN_DECIMALS: '18',
+    BLOCKCHAIN_KAIROS_RPC_URL: rpcUrl,
     KAIROS_RPC_URL: rpcUrl,
     KAIROS_CHAIN_ID: '1001',
     KAIROS_ERC20_CONTRACT_ADDRESS:
@@ -191,7 +193,9 @@ async function run() {
       env: {
         ...sharedEnvironment,
         VITE_LIVT_API_BASE_URL: backendUrl,
-        VITE_KAIROS_RPC_URL: rpcUrl,
+      VITE_BLOCKCHAIN_NETWORK: 'kairos',
+      VITE_BLOCKCHAIN_KAIROS_RPC_URL: rpcUrl,
+      VITE_KAIROS_RPC_URL: rpcUrl,
       },
     },
     'LivT Wallet',

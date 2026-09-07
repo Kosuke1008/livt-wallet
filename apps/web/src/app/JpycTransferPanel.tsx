@@ -1,7 +1,10 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { Address } from 'viem'
-import { RpcChainMismatchError } from '../blockchain/kairosChainVerification'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
+import { RpcChainMismatchError } from '../blockchain/networkChainVerification'
+import {
+  ACTIVE_NETWORK_PROFILE,
+  NetworkExecutionDisabledError,
+} from '../blockchain/networkProfiles'
 import { KairosRpcError } from '../blockchain/kairosRpcError'
 import {
   IncorrectPasswordError,
@@ -319,8 +322,8 @@ export function JpycTransferPanel({
       )}
       <h2 id="transfer-title">JPYC送金内容</h2>
       <dl className="transaction-details">
-        <div><dt>接続先</dt><dd>{KAIROS_NETWORK.name}</dd></div>
-        <div><dt>接続先番号</dt><dd>{KAIROS_NETWORK.chainId}</dd></div>
+        <div><dt>接続先</dt><dd>{ACTIVE_NETWORK_PROFILE.chainName}</dd></div>
+        <div><dt>接続先番号</dt><dd>{ACTIVE_NETWORK_PROFILE.chainId}</dd></div>
         <div><dt>通貨</dt><dd>{intent.token.displayName}</dd></div>
         <div><dt>JPYC契約アドレス</dt><dd>{intent.token.contractAddress}</dd></div>
         <div><dt>送り主</dt><dd>{intent.sender}</dd></div>
@@ -424,7 +427,7 @@ function TransactionResult({
       <p>状態: {status}</p>
       <p className="hash">取引番号: {transactionHash}</p>
       <a
-        href={`${KAIROS_NETWORK.blockExplorerUrl}/tx/${transactionHash}`}
+        href={`${ACTIVE_NETWORK_PROFILE.explorerUrl}/tx/${transactionHash}`}
         target="_blank"
         rel="noreferrer"
       >
@@ -447,7 +450,9 @@ function isProcessing(status: string): boolean {
 function getProcessingMessage(status: string): string {
   if (status === 'simulating') return '接続先確認と事前実行をしています…'
   if (status === 'signing') return 'この端末内で署名しています…'
-  if (status === 'broadcasting') return 'Kairosへ送信しています…'
+  if (status === 'broadcasting') {
+    return `${ACTIVE_NETWORK_PROFILE.chainName}へ送信しています…`
+  }
   return '取引の確定を待っています…'
 }
 
@@ -471,8 +476,11 @@ function getInputErrorMessage(error: unknown): string {
 }
 
 function getTransferErrorMessage(error: unknown): string {
+  if (error instanceof NetworkExecutionDisabledError) {
+    return 'このnetworkでは決済送信が無効です。取引には署名していません。'
+  }
   if (error instanceof RpcChainMismatchError) {
-    return '接続先がKaia Kairos（番号1001）ではないため送信を止めました。'
+    return `接続先が${ACTIVE_NETWORK_PROFILE.chainName}（番号${ACTIVE_NETWORK_PROFILE.chainId}）ではないため送信を止めました。`
   }
   if (error instanceof KairosRpcError) {
     return error.reason === 'timeout'

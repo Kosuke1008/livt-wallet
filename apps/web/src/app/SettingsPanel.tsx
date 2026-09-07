@@ -1,5 +1,5 @@
 import type { Address } from 'viem'
-import { KAIROS_NETWORK } from '../blockchain/kairos'
+import { ACTIVE_NETWORK_PROFILE } from '../blockchain/networkProfiles'
 
 interface SettingsPanelProps {
   readonly address: Address
@@ -25,11 +25,11 @@ export function SettingsPanel({ address, onBack }: SettingsPanelProps) {
       <dl className="settings-list">
         <div>
           <dt>ネットワーク</dt>
-          <dd>{KAIROS_NETWORK.name}</dd>
+          <dd>{ACTIVE_NETWORK_PROFILE.chainName}</dd>
         </div>
         <div>
           <dt>チェーンID</dt>
-          <dd>{KAIROS_NETWORK.chainId}</dd>
+          <dd>{ACTIVE_NETWORK_PROFILE.chainId}</dd>
         </div>
         <div>
           <dt>ウォレットアドレス</dt>
@@ -38,7 +38,7 @@ export function SettingsPanel({ address, onBack }: SettingsPanelProps) {
       </dl>
 
       <p className="security-notice">
-        LivT WalletはKaia Kairos試験ネットワーク専用の学習用ウォレットです。
+        LivT Walletの決済実行は現在Kaia Kairos試験ネットワーク専用です。
       </p>
     </section>
   )

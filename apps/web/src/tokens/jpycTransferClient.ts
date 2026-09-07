@@ -1,11 +1,11 @@
 import type { Address } from 'viem'
-import { kairosChain } from '../blockchain/kairos'
-import { kairosPublicClient } from '../blockchain/kairosClient'
+import { activeNetworkChain } from '../blockchain/activeNetwork'
+import { activeNetworkPublicClient } from '../blockchain/networkClient'
 import {
   kairosTransactionClient,
   type KairosTransactionClient,
 } from '../blockchain/kairosTransaction'
-import type { ChainIdentityClient } from '../blockchain/kairosChainVerification'
+import type { ChainIdentityClient } from '../blockchain/networkChainVerification'
 import {
   kairosErc20ReadClient,
   type Erc20ReadClient,
@@ -33,11 +33,11 @@ export interface JpycTransferRpcClient
 export const kairosJpycTransferRpcClient: JpycTransferRpcClient = {
   ...kairosErc20ReadClient,
   ...kairosTransactionClient,
-  getChainId: () => kairosPublicClient.getChainId(),
+  getChainId: () => activeNetworkPublicClient.getChainId(),
   simulateTransfer: async ({ contractAddress, sender, recipient, amount }) => {
-    const simulation = await kairosPublicClient.simulateContract({
+    const simulation = await activeNetworkPublicClient.simulateContract({
       account: sender,
-      chain: kairosChain,
+      chain: activeNetworkChain,
       address: contractAddress,
       abi: erc20TransferAbi,
       functionName: 'transfer',
@@ -46,7 +46,7 @@ export const kairosJpycTransferRpcClient: JpycTransferRpcClient = {
     return simulation.result
   },
   estimateTransferGas: ({ contractAddress, sender, recipient, amount }) =>
-    kairosPublicClient.estimateContractGas({
+    activeNetworkPublicClient.estimateContractGas({
       account: sender,
       address: contractAddress,
       abi: erc20TransferAbi,

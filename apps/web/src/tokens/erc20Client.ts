@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 import { erc20ReadAbi } from './erc20Abi'
-import { kairosPublicClient } from '../blockchain/kairosClient'
+import { activeNetworkPublicClient } from '../blockchain/networkClient'
 
 export interface Erc20ReadClient {
   getBytecode(contractAddress: Address): Promise<Hex | undefined>
@@ -11,21 +11,21 @@ export interface Erc20ReadClient {
 
 export const kairosErc20ReadClient: Erc20ReadClient = {
   getBytecode: (contractAddress) =>
-    kairosPublicClient.getBytecode({ address: contractAddress }),
+    activeNetworkPublicClient.getBytecode({ address: contractAddress }),
   readSymbol: (contractAddress) =>
-    kairosPublicClient.readContract({
+    activeNetworkPublicClient.readContract({
       abi: erc20ReadAbi,
       address: contractAddress,
       functionName: 'symbol',
     }),
   readDecimals: (contractAddress) =>
-    kairosPublicClient.readContract({
+    activeNetworkPublicClient.readContract({
       abi: erc20ReadAbi,
       address: contractAddress,
       functionName: 'decimals',
     }),
   readBalance: (contractAddress, ownerAddress) =>
-    kairosPublicClient.readContract({
+    activeNetworkPublicClient.readContract({
       abi: erc20ReadAbi,
       address: contractAddress,
       functionName: 'balanceOf',

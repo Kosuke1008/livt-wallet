@@ -1,7 +1,7 @@
 import { formatUnits, type Address } from 'viem'
 import { normalizeEvmAddress } from './address'
-import { KAIROS_NETWORK } from './kairos'
-import { kairosPublicClient } from './kairosClient'
+import { ACTIVE_NETWORK_PROFILE } from './networkProfiles'
+import { activeNetworkPublicClient } from './networkClient'
 import { KairosRpcError, toKairosRpcError } from './kairosRpcError'
 
 export interface NativeBalanceClient {
@@ -10,7 +10,7 @@ export interface NativeBalanceClient {
 
 export async function getKairosNativeBalance( //KAIA残高取得
   address: unknown,
-  client: NativeBalanceClient = kairosPublicClient,
+  client: NativeBalanceClient = activeNetworkPublicClient,
 ): Promise<bigint> {
   const normalizedAddress = normalizeEvmAddress(address) //正しいEVMアドレスへ整形
 
@@ -29,5 +29,5 @@ export async function getKairosNativeBalance( //KAIA残高取得
 export { KairosRpcError }
 
 export function formatKairosBalance(balanceInPeb: bigint): string {
-  return formatUnits(balanceInPeb, KAIROS_NETWORK.nativeCurrency.decimals)
+  return formatUnits(balanceInPeb, ACTIVE_NETWORK_PROFILE.nativeCurrency.decimals)
 }
