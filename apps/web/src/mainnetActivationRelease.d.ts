@@ -1,0 +1,1 @@
+declare const __LIVT_MAINNET_ACTIVATION_RELEASE__: boolean

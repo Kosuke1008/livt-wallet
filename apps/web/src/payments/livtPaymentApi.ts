@@ -7,6 +7,16 @@ const transactionHashPattern = /^0x[0-9a-fA-F]{64}$/
 const isoDatePattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
 
+const mainnetPilotSchema = z
+  .object({
+    payment_id: z.number().int().positive().safe(),
+    store_id: z.number().int().positive().safe(),
+    user_id: z.number().int().positive().safe(),
+    merchant_address: z.string().regex(evmAddressPattern),
+    sender_address: z.string().regex(evmAddressPattern),
+  })
+  .strict()
+
 export const livtPaymentDetailsSchema = z
   .object({
     id: z.number().int().positive().safe(),
@@ -22,6 +32,8 @@ export const livtPaymentDetailsSchema = z
     token_contract: z.string().regex(evmAddressPattern),
     token_symbol: z.string().trim().min(1).max(32),
     token_decimals: z.number().int().min(0).max(255),
+    network_profile_version: z.number().int().positive().safe().optional(),
+    mainnet_pilot: mainnetPilotSchema.nullable().optional(),
     expires_at: z.string().max(64).nullable(),
     expires_at_iso: z
       .string()
@@ -326,8 +338,14 @@ export function createLivtPaymentApiClient(
         throw await classifySponsorshipError(response)
       }
 
-      const result = await parseResponse(response, sponsorshipResponseSchema)
-      return normalizeLivtTransactionHash(result.transaction_hash)
+      try {
+        const result = await parseResponse(response, sponsorshipResponseSchema)
+        return normalizeLivtTransactionHash(result.transaction_hash)
+      } catch (error) {
+        throw new LivtPaymentApiError('sponsorship-unknown', response.status, {
+          cause: error,
+        })
+      }
     },
 
     async logout(accessToken) {
@@ -570,7 +588,7 @@ async function classifySponsorshipError(
   }
   if (response.status >= 500) {
     return new LivtPaymentApiError(
-      'sponsorship-unavailable',
+      'sponsorship-unknown',
       response.status,
     )
   }

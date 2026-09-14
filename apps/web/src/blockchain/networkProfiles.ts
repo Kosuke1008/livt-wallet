@@ -145,13 +145,27 @@ export function resolveRpcUrl(configuredValue: unknown, label: string): string {
 
 export function resolveNetworkProfile(
   environment: NetworkEnvironment,
-  options: { readonly allowKairosDefault?: boolean } = {},
+  options: {
+    readonly allowKairosDefault?: boolean
+    readonly mainnetActivationReleaseCapable?: boolean
+  } = {},
 ): NetworkProfile {
   const networkId = resolveNetworkId(
     environment.VITE_BLOCKCHAIN_NETWORK,
     options,
   )
-  const definition = NETWORK_PROFILE_DEFINITIONS[networkId]
+  const baseDefinition = NETWORK_PROFILE_DEFINITIONS[networkId]
+  const capable = options.mainnetActivationReleaseCapable
+    ?? (typeof __LIVT_MAINNET_ACTIVATION_RELEASE__ !== 'undefined'
+      && __LIVT_MAINNET_ACTIVATION_RELEASE__)
+  const mainnetRuntimeEnabled = environment.VITE_MAINNET_PAYMENTS_ENABLED === 'true'
+  const definition = networkId === 'kaia-mainnet'
+    ? {
+        ...baseDefinition,
+        paymentExecutionEnabled: capable && mainnetRuntimeEnabled,
+        feeDelegationExecutionEnabled: capable && mainnetRuntimeEnabled,
+      }
+    : baseDefinition
   const configuredRpc =
     networkId === 'kairos'
       ? (environment.VITE_BLOCKCHAIN_KAIROS_RPC_URL ??

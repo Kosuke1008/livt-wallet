@@ -5,6 +5,19 @@ playwright-report/
 test-results/
 .vite/
 *.tsbuildinfo
+apps/web/mainnet-pilot-activation.json
 .env
 .env.*
 !.env.example
+# Operator cloud/RPC credentials and certificate material must remain local.
+.aws/
+credentials/
+secrets/
+certificates/
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*pilot*credentials*

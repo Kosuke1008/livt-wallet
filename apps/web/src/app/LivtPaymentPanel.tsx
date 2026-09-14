@@ -54,8 +54,11 @@ import {
   type LivtPaymentTransferExecutor,
 } from '../payments/livtPaymentFlow'
 import {
+  clearUnknownPaymentAttempt,
   clearKnownPaymentTransactionHash,
+  loadUnknownPaymentAttempt,
   loadKnownPaymentTransactionHash,
+  saveUnknownPaymentAttempt,
   saveKnownPaymentTransactionHash,
 } from '../payments/livtPaymentProgress'
 import {
@@ -134,6 +137,10 @@ export function LivtPaymentPanel({
       tokenStorage,
     ),
   )
+  const [initialUnknownAttempt] = useState(() =>
+    ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+    loadUnknownPaymentAttempt(request.paymentId, sender, tokenStorage),
+  )
   const [accessToken, setAccessToken] = useState<string | null>(() =>
     loadPaymentAccessToken(tokenStorage),
   )
@@ -155,15 +162,21 @@ export function LivtPaymentPanel({
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [submissionStatus, setSubmissionStatus] =
     useState<SubmissionStatus>(
-      initialTransactionHash === null ? 'reviewing' : 'pending',
+      initialTransactionHash !== null
+        ? 'pending'
+        : initialUnknownAttempt
+          ? 'sponsorship-unknown'
+          : 'reviewing',
     )
   const [phase, setPhase] = useState<JpycTransferPhaseUpdate['phase'] | null>(
     null,
   )
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(
-    initialTransactionHash === null
-      ? null
-      : '保存済みの取引番号があります。送金せず確認だけ再試行してください。',
+    initialTransactionHash !== null
+      ? '保存済みの取引番号があります。送金せず確認だけ再試行してください。'
+      : initialUnknownAttempt
+        ? '保存済みのMainnet送信試行があります。送信済みの可能性があるため、再度署名・送信しないでください。'
+        : null,
   )
   const [transactionHash, setTransactionHash] = useState<Hash | null>(
     initialTransactionHash,
@@ -273,7 +286,13 @@ export function LivtPaymentPanel({
   ])
   const validatedPayment = paymentValidation.payment
   const useFeeDelegation =
-    feeDelegationAvailable && preferFeeDelegation
+    feeDelegationAvailable &&
+    (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' || preferFeeDelegation)
+  const pilotUserMatches =
+    ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet' ||
+    (details?.mainnet_pilot !== null &&
+      details?.mainnet_pilot !== undefined &&
+      authenticatedUser?.id === details.mainnet_pilot.user_id)
   const displayedDetailsError =
     detailsError ??
     (transactionHash === null ? paymentValidation.error : null)
@@ -324,6 +343,7 @@ export function LivtPaymentPanel({
     // [Flow L] 結果不明時も再送せず確認だけ再試行できるようtxHashを保存する。
     setTransactionHash(hash)
     try {
+      clearUnknownPaymentAttempt(request.paymentId, sender, tokenStorage)
       saveKnownPaymentTransactionHash(
         request.paymentId,
         sender,
@@ -406,6 +426,8 @@ export function LivtPaymentPanel({
       accessToken === null ||
       authenticationStatus !== 'authenticated' ||
       signingPassword.length === 0 ||
+      (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+        (!useFeeDelegation || !pilotUserMatches)) ||
       submissionInFlight.current
     ) {
       return
@@ -434,6 +456,21 @@ export function LivtPaymentPanel({
       })
       assertLivtPaymentDetailsUnchanged(details, refreshedDetails)
       if (!isCurrent(generation)) return
+
+      if (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet') {
+        // Persist before signing. An interrupted or ambiguous attempt is never resubmitted.
+        try {
+          saveUnknownPaymentAttempt(
+            request.paymentId,
+            sender,
+            tokenStorage,
+          )
+        } catch (error) {
+          throw new LivtPaymentApiError('sponsorship-unknown', null, {
+            cause: error,
+          })
+        }
+      }
 
       const result = await executeLivtPayment({
         paymentId: request.paymentId,
@@ -470,11 +507,14 @@ export function LivtPaymentPanel({
       } else if (error instanceof LivtPaymentTransactionRevertedError) {
         forgetTransactionHash()
         setTransactionHash(error.transactionHash)
-        setCanRetryTransfer(true)
+        setCanRetryTransfer(ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet')
         setSubmissionStatus('failed')
         setSubmissionMessage('取引はチェーン上で取り消されました。')
       } else if (error instanceof LivtPaymentApiError) {
-        if (error.reason === 'sponsorship-unknown') {
+        if (
+          error.reason === 'sponsorship-unknown' ||
+          ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet'
+        ) {
           setSubmissionStatus('sponsorship-unknown')
           setSubmissionMessage(
             'Fee Payerへの依頼結果を確認できません。transactionが送信済みの可能性があるため、再度署名・送信しないでください。',
@@ -483,7 +523,10 @@ export function LivtPaymentPanel({
           setSubmissionStatus('failed')
           setSubmissionMessage(getDetailsErrorMessage(error))
         }
-      } else if (isPaymentValidationError(error)) {
+      } else if (
+        isPaymentValidationError(error) &&
+        ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet'
+      ) {
         setSubmissionStatus('failed')
         setSubmissionMessage(getPaymentValidationErrorMessage(error))
       } else {
@@ -491,6 +534,11 @@ export function LivtPaymentPanel({
         if (knownHash !== null) {
           setTransactionHash(knownHash)
           await confirmKnownHash(knownHash, accessToken, generation)
+        } else if (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet') {
+          setSubmissionStatus('sponsorship-unknown')
+          setSubmissionMessage(
+            '送信状態を安全に判定できません。再度署名・送信せず、LivT管理者へ確認してください。',
+          )
         } else {
           setSubmissionStatus('failed')
           setSubmissionMessage(getTransferErrorMessage(error))
@@ -652,6 +700,14 @@ export function LivtPaymentPanel({
       {authenticationStatus === 'authenticated' &&
         submissionStatus === 'reviewing' && (
           <div className="payment-confirmation">
+            {ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+              !feeDelegationAvailable && (
+                <p role="alert">Mainnet pilotのFee Payer経路を確認できません。</p>
+              )}
+            {ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+              !pilotUserMatches && (
+                <p role="alert">承認済みpilot利用者とログイン利用者が一致しません。</p>
+              )}
             {!useFeeDelegation &&
               !hasNativeBalance &&
               nativeBalanceError === null &&
@@ -682,12 +738,15 @@ export function LivtPaymentPanel({
                 (!useFeeDelegation &&
                   nativeBalanceError !== null) ||
                 (!useFeeDelegation && !hasNativeBalance) ||
+                (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+                  (!feeDelegationAvailable || !pilotUserMatches)) ||
                 signingPassword.length === 0
               }
             >
               内容を確認してJPYCを送る
             </button>
-            {feeDelegationAvailable && (
+            {feeDelegationAvailable &&
+              ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet' && (
               <button
                 type="button"
                 className="secondary"
@@ -727,7 +786,7 @@ export function LivtPaymentPanel({
         <div className="transaction-result" aria-live="polite">
           <h3>Fee Payerの結果を確認できません</h3>
           <p role="alert">{submissionMessage}</p>
-          <p>この画面を保持したまま、LivT管理者へ確認してください。</p>
+          <p>画面を閉じても再送信せず、LivT管理者へ確認してください。</p>
         </div>
       )}
 
@@ -764,7 +823,8 @@ export function LivtPaymentPanel({
               内容確認へ戻る
             </button>
           )}
-          {transactionHash !== null && canRetryTransfer && (
+          {ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet' &&
+            transactionHash !== null && canRetryTransfer && (
             <button
               type="button"
               onClick={() => {

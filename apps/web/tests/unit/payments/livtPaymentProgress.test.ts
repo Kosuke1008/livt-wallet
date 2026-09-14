@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Address, Hash } from 'viem'
 import {
+  clearUnknownPaymentAttempt,
   clearKnownPaymentTransactionHash,
+  loadUnknownPaymentAttempt,
   loadKnownPaymentTransactionHash,
+  saveUnknownPaymentAttempt,
   saveKnownPaymentTransactionHash,
   type PaymentProgressStorage,
 } from '../../../src/payments/livtPaymentProgress'
@@ -38,6 +41,26 @@ describe('LivT payment progress', () => {
 
     expect(loadKnownPaymentTransactionHash('42', sender, storage)).toBeNull()
     expect(storage.values.size).toBe(0)
+  })
+
+  it('Mainnet送信試行をhash取得前から保存し再読込後も保持する', () => {
+    const storage = createMemoryStorage()
+    saveUnknownPaymentAttempt('42', sender, storage)
+    expect(loadUnknownPaymentAttempt('42', sender, storage)).toBe(true)
+    expect(loadUnknownPaymentAttempt('42', otherSender, storage)).toBe(false)
+    clearUnknownPaymentAttempt('42', sender, storage)
+    expect(loadUnknownPaymentAttempt('42', sender, storage)).toBe(false)
+  })
+
+  it('保存できない場合は署名前ガードを失敗させる', () => {
+    const storage: PaymentProgressStorage = {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    }
+    expect(() => saveUnknownPaymentAttempt('42', sender, storage)).toThrow(
+      'storage is unavailable',
+    )
   })
 })
 

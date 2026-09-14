@@ -221,12 +221,57 @@ describe('LivT payment API client', () => {
 
     await expectApiError(
       client.sponsorPayment('42', '0x3101', '1|token'),
-      'malformed-response',
+      'sponsorship-unknown',
     )
     await expectApiError(
       client.sponsorPayment('42', 'not-hex' as Hex, '1|token'),
       'sponsorship-rejected',
     )
+  })
+
+  it.each([
+    [500, '<html>proxy failure</html>'],
+    [502, ''],
+    [503, JSON.stringify({ error: 'unexpected upstream state' })],
+  ])('ambiguous sponsor HTTP %sを再送可能扱いにしない', async (status, body) => {
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status })),
+    )
+    await expectApiError(
+      client.sponsorPayment('42', '0x3101', '1|token'),
+      'sponsorship-unknown',
+    )
+  })
+
+  it('Mainnet pilot metadataをstrict schemaで受け取り未知fieldを拒否する', async () => {
+    const mainnetDetails = {
+      ...paymentDetails,
+      amount: 1,
+      display_amount: '1',
+      atomic_amount: '1000000000000000000',
+      network: 'kaia-mainnet',
+      chain_name: 'Kaia Mainnet',
+      chain_id: 8217,
+      network_profile_version: 1,
+      mainnet_pilot: {
+        payment_id: 42,
+        store_id: 1,
+        user_id: 1,
+        merchant_address: paymentDetails.recipient_address,
+        sender_address: '0x3333333333333333333333333333333333333333',
+      },
+    }
+    const good = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(mainnetDetails)),
+    )
+    await expect(good.getPaymentDetails('42')).resolves.toEqual(mainnetDetails)
+    const bad = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ ...mainnetDetails, rpc_url: 'secret' })),
+    )
+    await expectApiError(bad.getPaymentDetails('42'), 'malformed-response')
   })
 
   it('sponsor transport failureを送信結果不明として扱う', async () => {

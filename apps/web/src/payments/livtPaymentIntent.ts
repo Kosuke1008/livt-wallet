@@ -64,6 +64,14 @@ export class PaymentDetailsChangedError extends Error {
   }
 }
 
+export class MainnetPilotApprovalMismatchError extends Error {
+  readonly name = 'MainnetPilotApprovalMismatchError'
+
+  constructor() {
+    super('Mainnet pilot approval metadata does not match the payment')
+  }
+}
+
 export interface ValidatedLivtPayment {
   readonly details: LivtPaymentDetails
   readonly intent: JpycTransferIntent
@@ -100,6 +108,29 @@ export function createLivtPaymentIntent(input: {
     input.details.network !== ACTIVE_NETWORK_PROFILE.id
   ) {
     throw new UnsupportedPaymentChainError()
+  }
+  if (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet') {
+    const pilot = input.details.mainnet_pilot
+    let merchant: Address
+    let approvedSender: Address
+    try {
+      merchant = normalizeEvmAddress(pilot?.merchant_address)
+      approvedSender = normalizeEvmAddress(pilot?.sender_address)
+    } catch {
+      throw new MainnetPilotApprovalMismatchError()
+    }
+    if (
+      input.details.network_profile_version !== ACTIVE_NETWORK_PROFILE.version ||
+      pilot === undefined ||
+      pilot === null ||
+      pilot.payment_id !== input.details.id ||
+      merchant !== normalizeEvmAddress(input.details.recipient_address) ||
+      approvedSender !== normalizeEvmAddress(input.sender) ||
+      input.details.display_amount !== '1' ||
+      input.details.atomic_amount !== '1000000000000000000'
+    ) {
+      throw new MainnetPilotApprovalMismatchError()
+    }
   }
 
   let configuredContract: Address
@@ -171,11 +202,18 @@ export function assertLivtPaymentDetailsUnchanged(
     'token_contract',
     'token_symbol',
     'token_decimals',
+    'network_profile_version',
     'expires_at',
     'expires_at_iso',
   ]
 
   if (fields.some((field) => displayed[field] !== refreshed[field])) {
+    throw new PaymentDetailsChangedError()
+  }
+  if (
+    JSON.stringify(displayed.mainnet_pilot ?? null) !==
+    JSON.stringify(refreshed.mainnet_pilot ?? null)
+  ) {
     throw new PaymentDetailsChangedError()
   }
 }

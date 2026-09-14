@@ -56,6 +56,25 @@ describe('network profiles', () => {
     )
   })
 
+  it('requires both reviewed build capability and the Mainnet runtime gate', () => {
+    const base = {
+      VITE_BLOCKCHAIN_NETWORK: 'kaia-mainnet',
+      VITE_BLOCKCHAIN_KAIA_MAINNET_RPC_URL: 'https://mainnet.example.test',
+    }
+    const safe = resolveNetworkProfile(base, {
+      mainnetActivationReleaseCapable: true,
+    })
+    expect(safe.paymentExecutionEnabled).toBe(false)
+    expect(safe.feeDelegationExecutionEnabled).toBe(false)
+
+    const live = resolveNetworkProfile({
+      ...base,
+      VITE_MAINNET_PAYMENTS_ENABLED: 'true',
+    }, { mainnetActivationReleaseCapable: true })
+    expect(live.paymentExecutionEnabled).toBe(true)
+    expect(live.feeDelegationExecutionEnabled).toBe(true)
+  })
+
   it.each([
     {},
     { VITE_BLOCKCHAIN_NETWORK: '' },

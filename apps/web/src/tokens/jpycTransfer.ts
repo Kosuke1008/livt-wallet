@@ -159,7 +159,11 @@ export async function executeJpycTransfer({
   signingAccountProvider = storedSigningAccountProvider,
   isCurrent = () => true,
 }: ExecuteJpycTransferOptions): Promise<JpycTransferResult> {
-  // Phase 1 permits Mainnet profile validation/read-only use, never signing.
+  // The controlled Mainnet pilot has no direct-broadcast path, even in an
+  // activation-capable Wallet build.
+  if (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet') {
+    throw new Error('Mainnet direct payment execution is disabled')
+  }
   assertActiveNetworkExecutionAllowed()
 
   const assertCurrent = () => {

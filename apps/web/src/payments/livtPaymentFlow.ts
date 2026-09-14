@@ -5,6 +5,7 @@ import {
   type JpycTransferPhaseUpdate,
   type JpycTransferResult,
 } from '../tokens/jpycTransfer'
+import { ACTIVE_NETWORK_PROFILE } from '../blockchain/networkProfiles'
 import type { JpycTransferIntent } from '../tokens/transferValidation'
 import type { ExecuteFeeDelegatedJpycTransferOptions } from '../tokens/feeDelegatedJpycTransfer'
 import {
@@ -85,6 +86,10 @@ export async function executeLivtPayment({
   onPhase,
   isCurrent,
 }: ExecuteLivtPaymentOptions): Promise<LivtPaymentResult> {
+  if (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet'
+    && submissionMode !== 'fee-delegated') {
+    throw new Error('Mainnet direct payment execution is disabled')
+  }
   // [Flow J-L] 端末内署名・一度だけのbroadcast・txHash取得を実行する。
   const transfer =
     submissionMode === 'fee-delegated'
