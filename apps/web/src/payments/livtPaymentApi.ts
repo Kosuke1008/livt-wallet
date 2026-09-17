@@ -582,7 +582,9 @@ async function classifySponsorshipError(
   }
   if (publicError === 'Fee sponsorship is unavailable') {
     return new LivtPaymentApiError(
-      'sponsorship-unavailable',
+      response.status >= 500
+        ? 'sponsorship-unknown'
+        : 'sponsorship-unavailable',
       response.status,
     )
   }

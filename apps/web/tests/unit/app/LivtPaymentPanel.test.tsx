@@ -235,7 +235,9 @@ describe('LivtPaymentPanel', () => {
 
     expect(view.textContent).toContain('決済手数料はLivTが負担します')
     expect(view.textContent).not.toContain('KAIA残高が不足しています')
+    expect(findButton(view, '内容を確認してJPYCを送る').disabled).toBe(true)
     await enterSigningPassword(view)
+    expect(findButton(view, '内容を確認してJPYCを送る').disabled).toBe(false)
 
     await act(async () => {
       findButton(view, '内容を確認してJPYCを送る').click()
@@ -249,6 +251,14 @@ describe('LivtPaymentPanel', () => {
       transactionHash,
       '1|short-lived-token',
     )
+  })
+
+  it('Kairos直接払いでは送金元KAIA残高が必要', async () => {
+    const view = await renderPanel({ hasNativeBalance: false })
+    await enterSigningPassword(view)
+
+    expect(view.textContent).toContain('手数料に必要なKAIA残高が不足しています。')
+    expect(findButton(view, '内容を確認してJPYCを送る').disabled).toBe(true)
   })
 
   it('fee delegation有効時も署名前に既存の直接送信を選べる', async () => {

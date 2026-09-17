@@ -288,6 +288,8 @@ export function LivtPaymentPanel({
   const useFeeDelegation =
     feeDelegationAvailable &&
     (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' || preferFeeDelegation)
+  const requiresUserNativeBalance =
+    ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet' && !useFeeDelegation
   const pilotUserMatches =
     ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet' ||
     (details?.mainnet_pilot !== null &&
@@ -442,6 +444,7 @@ export function LivtPaymentPanel({
     setSubmissionMessage(null)
     setCanRetryTransfer(false)
     setPhase('simulating')
+    let sponsorRequestMayHaveStarted = false
 
     try {
       const refreshedDetails = await apiClient.getPaymentDetails(
@@ -484,6 +487,12 @@ export function LivtPaymentPanel({
         isCurrent: () => isCurrent(generation),
         onPhase: (update) => {
           if (!isCurrent(generation)) return
+          if (
+            ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+            update.phase === 'broadcasting'
+          ) {
+            sponsorRequestMayHaveStarted = true
+          }
           setPhase(update.phase)
           if (update.transactionHash !== undefined) {
             rememberTransactionHash(
@@ -502,6 +511,30 @@ export function LivtPaymentPanel({
     } catch (error) {
       if (!isCurrent(generation)) return
 
+      const definitePreSubmissionFailure =
+        ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+        !sponsorRequestMayHaveStarted &&
+        !(
+          error instanceof LivtPaymentApiError &&
+          error.reason === 'sponsorship-unknown'
+        )
+      if (definitePreSubmissionFailure) {
+        try {
+          clearUnknownPaymentAttempt(request.paymentId, sender, tokenStorage)
+          if (loadUnknownPaymentAttempt(request.paymentId, sender, tokenStorage)) {
+            throw new Error('Payment attempt storage could not be cleared', {
+              cause: error,
+            })
+          }
+        } catch {
+          setSubmissionStatus('sponsorship-unknown')
+          setSubmissionMessage(
+            '送信状態を安全に判定できません。再度署名・送信せず、LivT管理者へ確認してください。',
+          )
+          return
+        }
+      }
+
       if (error instanceof LivtPaymentConfirmationError) {
         handleConfirmationFailure(error.apiError, error.transactionHash)
       } else if (error instanceof LivtPaymentTransactionRevertedError) {
@@ -511,10 +544,7 @@ export function LivtPaymentPanel({
         setSubmissionStatus('failed')
         setSubmissionMessage('取引はチェーン上で取り消されました。')
       } else if (error instanceof LivtPaymentApiError) {
-        if (
-          error.reason === 'sponsorship-unknown' ||
-          ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet'
-        ) {
+        if (error.reason === 'sponsorship-unknown') {
           setSubmissionStatus('sponsorship-unknown')
           setSubmissionMessage(
             'Fee Payerへの依頼結果を確認できません。transactionが送信済みの可能性があるため、再度署名・送信しないでください。',
@@ -525,7 +555,7 @@ export function LivtPaymentPanel({
         }
       } else if (
         isPaymentValidationError(error) &&
-        ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet'
+        (ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet' || definitePreSubmissionFailure)
       ) {
         setSubmissionStatus('failed')
         setSubmissionMessage(getPaymentValidationErrorMessage(error))
@@ -534,7 +564,10 @@ export function LivtPaymentPanel({
         if (knownHash !== null) {
           setTransactionHash(knownHash)
           await confirmKnownHash(knownHash, accessToken, generation)
-        } else if (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet') {
+        } else if (
+          ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
+          !definitePreSubmissionFailure
+        ) {
           setSubmissionStatus('sponsorship-unknown')
           setSubmissionMessage(
             '送信状態を安全に判定できません。再度署名・送信せず、LivT管理者へ確認してください。',
@@ -620,7 +653,9 @@ export function LivtPaymentPanel({
         QRやURLの金額ではなく、LivTから取得した内容を表示しています。
         {useFeeDelegation
           ? ' 決済手数料はLivTが負担します。'
-          : ' 手数料はKAIAで支払います。'}
+          : requiresUserNativeBalance
+            ? ' 手数料はKAIAで支払います。'
+            : ''}
       </p>
 
       {availableJpycBalance === null && jpycBalanceError === null && (
@@ -628,12 +663,12 @@ export function LivtPaymentPanel({
       )}
 
       {(jpycBalanceError !== null ||
-        (!useFeeDelegation && nativeBalanceError !== null)) && (
+        (requiresUserNativeBalance && nativeBalanceError !== null)) && (
         <div className="payment-balance-error">
           {jpycBalanceError !== null && (
             <p role="alert">{jpycBalanceError}</p>
           )}
-          {!useFeeDelegation &&
+          {requiresUserNativeBalance &&
             nativeBalanceError !== null && (
             <p role="alert">{nativeBalanceError}</p>
           )}
@@ -708,13 +743,13 @@ export function LivtPaymentPanel({
               !pilotUserMatches && (
                 <p role="alert">承認済みpilot利用者とログイン利用者が一致しません。</p>
               )}
-            {!useFeeDelegation &&
+            {requiresUserNativeBalance &&
               !hasNativeBalance &&
               nativeBalanceError === null &&
               !isNativeBalanceLoading && (
               <p role="alert">手数料に必要なKAIA残高が不足しています。</p>
             )}
-            {!useFeeDelegation && isNativeBalanceLoading && (
+            {requiresUserNativeBalance && isNativeBalanceLoading && (
               <p role="status">KAIA残高を確認しています…</p>
             )}
             <label htmlFor="livt-payment-signing-password">
@@ -733,11 +768,11 @@ export function LivtPaymentPanel({
               disabled={
                 validatedPayment === null ||
                 isJpycBalanceLoading ||
-                (!useFeeDelegation && isNativeBalanceLoading) ||
+                (requiresUserNativeBalance && isNativeBalanceLoading) ||
                 jpycBalanceError !== null ||
-                (!useFeeDelegation &&
+                (requiresUserNativeBalance &&
                   nativeBalanceError !== null) ||
-                (!useFeeDelegation && !hasNativeBalance) ||
+                (requiresUserNativeBalance && !hasNativeBalance) ||
                 (ACTIVE_NETWORK_PROFILE.id === 'kaia-mainnet' &&
                   (!feeDelegationAvailable || !pilotUserMatches)) ||
                 signingPassword.length === 0
@@ -812,7 +847,8 @@ export function LivtPaymentPanel({
           {transactionHash !== null && (
             <p className="hash">取引番号: {transactionHash}</p>
           )}
-          {transactionHash === null && (
+          {transactionHash === null &&
+            ACTIVE_NETWORK_PROFILE.id !== 'kaia-mainnet' && (
             <button
               type="button"
               onClick={() => {

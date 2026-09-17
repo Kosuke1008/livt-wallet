@@ -190,10 +190,11 @@ describe('LivT payment API client', () => {
     [401, { error: 'Unauthenticated user' }, 'unauthenticated'],
     [400, { error: 'Already paid' }, 'already-confirmed'],
     [400, { error: 'Expired' }, 'expired'],
+    [400, { error: 'Fee sponsorship policy rejected' }, 'sponsorship-rejected'],
     [502, { error: 'Fee sponsorship rejected' }, 'sponsorship-rejected'],
     [429, { error: 'Too Many Attempts.' }, 'sponsorship-unavailable'],
     [503, { error: 'Fee sponsorship status is unknown' }, 'sponsorship-unknown'],
-    [503, { error: 'Fee sponsorship is unavailable' }, 'sponsorship-unavailable'],
+    [503, { error: 'Fee sponsorship is unavailable' }, 'sponsorship-unknown'],
   ] as const)(
     'sponsor error HTTP %sを%sへ分類する',
     async (status, body, reason) => {
@@ -227,6 +228,28 @@ describe('LivT payment API client', () => {
       client.sponsorPayment('42', 'not-hex' as Hex, '1|token'),
       'sponsorship-rejected',
     )
+  })
+
+  it('sponsor requestのlocal validation失敗はHTTP POST前に拒否する', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      fetchMock,
+    )
+
+    await expectApiError(
+      client.sponsorPayment('42', 'not-hex' as Hex, '1|token'),
+      'sponsorship-rejected',
+    )
+    await expectApiError(
+      client.sponsorPayment('42', '0x3101', 'invalid token'),
+      'unauthenticated',
+    )
+    await expectApiError(
+      client.sponsorPayment('invalid', '0x3101', '1|token'),
+      'payment-not-found',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it.each([
