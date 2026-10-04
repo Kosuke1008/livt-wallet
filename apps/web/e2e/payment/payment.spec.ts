@@ -77,7 +77,9 @@ test('receipt未反映時は再送せず、reload後に保存済みtxHashだけ�
   expect(rpc.backendReceiptReads).toBe(10)
 
   await page.reload()
-  await page.getByLabel('パスワード').fill(browserEnvironment.walletPassword)
+  await page
+    .getByLabel('パスワード', { exact: true })
+    .fill(browserEnvironment.walletPassword)
   await page.getByRole('button', { name: 'ウォレットを解除' }).click()
 
   await expect(
@@ -102,6 +104,72 @@ test('receipt未反映時は再送せず、reload後に保存済みtxHashだけ�
   expect(rpc.backendReceiptReads).toBe(11)
 })
 
+test('異なる金額の連続2 Paymentを別transactionとして確定する', async ({
+  page,
+}) => {
+  await openPaymentAndCreateWallet(
+    page,
+    paymentFixtures.sequentialFirstPaymentId,
+  )
+  await expectAuthoritativePaymentDetails(
+    page,
+    paymentFixtures.sequentialFirstAmount,
+  )
+  await loginToLivt(page)
+  await submitPayment(page)
+
+  await expect(
+    page.getByRole('heading', { name: 'お支払いが確認されました' }),
+  ).toBeVisible({ timeout: 20_000 })
+  const firstState = readPaymentState(
+    paymentFixtures.sequentialFirstPaymentId,
+  )
+  expect(firstState.status).toBe('confirmed')
+  expect(firstState.transactionHash).toMatch(/^0x[0-9a-f]{64}$/)
+
+  await openPaymentWithExistingWallet(
+    page,
+    paymentFixtures.sequentialSecondPaymentId,
+  )
+  await expectAuthoritativePaymentDetails(
+    page,
+    paymentFixtures.sequentialSecondAmount,
+  )
+  await expect(page.getByText('LivT利用者: Browser Review User')).toBeVisible()
+  await expect(
+    page.getByText('保存済みの取引番号があります。送金せず確認だけ再試行してください。'),
+  ).toHaveCount(0)
+  await submitPayment(page)
+
+  await expect(
+    page.getByRole('heading', { name: 'お支払いが確認されました' }),
+  ).toBeVisible({ timeout: 20_000 })
+  const secondState = readPaymentState(
+    paymentFixtures.sequentialSecondPaymentId,
+  )
+  expect(secondState.status).toBe('confirmed')
+  expect(secondState.transactionHash).toMatch(/^0x[0-9a-f]{64}$/)
+  expect(secondState.transactionHash).not.toBe(firstState.transactionHash)
+  expect(firstState.userId).toBe(910001)
+  expect(secondState.userId).toBe(910001)
+
+  const rpc = await readRpcState()
+  expect(rpc.broadcasts).toBe(2)
+  expect(rpc.backendReceiptReads).toBe(2)
+  expect(rpc.transfers).toEqual([
+    {
+      transactionHash: firstState.transactionHash,
+      recipient: checksumRecipient,
+      amount: paymentFixtures.sequentialFirstAtomicAmount,
+    },
+    {
+      transactionHash: secondState.transactionHash,
+      recipient: checksumRecipient,
+      amount: paymentFixtures.sequentialSecondAtomicAmount,
+    },
+  ])
+})
+
 test('期限切れのbackend決済情報ではログインも送金も開始しない', async ({ page }) => {
   await openPaymentAndCreateWallet(page, paymentFixtures.expiredPaymentId)
 
@@ -120,6 +188,53 @@ test('期限切れのbackend決済情報ではログインも送金も開始し�
   const rpc = await readRpcState()
   expect(rpc.simulations).toBe(0)
   expect(rpc.broadcasts).toBe(0)
+})
+
+test('決済履歴のAPI値をHTMLとして実行しない', async ({ page }) => {
+  const attack = '<img src=x onerror="window.__livtXssExecuted=true">'
+  const scriptAttack = '<script>window.__livtXssExecuted=true</script>'
+
+  await page.addInitScript(() => {
+    localStorage.setItem('user_token', 'browser-xss-test-token')
+    Object.defineProperty(window, '__livtXssExecuted', {
+      configurable: true,
+      value: false,
+      writable: true,
+    })
+  })
+  await page.route('**/api/user/payments', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      json: {
+        payments: [
+          {
+            amount: attack,
+            store_name: scriptAttack,
+            status: attack,
+            paid_at: scriptAttack,
+            tx_hash: attack,
+          },
+        ],
+      },
+      status: 200,
+    })
+  })
+
+  await page.goto(new URL('/user/payments', browserEnvironment.backendUrl).href)
+
+  const card = page.locator('.payment-card')
+  await expect(card).toContainText(attack)
+  await expect(card).toContainText(scriptAttack)
+  await expect(card.locator('img, script')).toHaveCount(0)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __livtXssExecuted?: boolean })
+            .__livtXssExecuted,
+      ),
+    )
+    .toBe(false)
 })
 
 async function openPaymentAndCreateWallet(
@@ -143,7 +258,9 @@ async function openPaymentAndCreateWallet(
   await expect(page).toHaveURL(
     new URL(`/?payment_id=${paymentId}`, browserEnvironment.walletUrl).href,
   )
-  await page.getByLabel('パスワード').fill(browserEnvironment.walletPassword)
+  await page
+    .getByLabel('パスワード', { exact: true })
+    .fill(browserEnvironment.walletPassword)
   await page
     .getByRole('button', { name: 'ウォレットを作成して暗号化' })
     .click()
@@ -152,14 +269,44 @@ async function openPaymentAndCreateWallet(
   })
 }
 
-async function expectAuthoritativePaymentDetails(page: Page): Promise<void> {
+async function openPaymentWithExistingWallet(
+  page: Page,
+  paymentId: number,
+): Promise<void> {
+  await page.goto(
+    new URL(`/pay/${paymentId}`, browserEnvironment.backendUrl).href,
+  )
+  await page.getByRole('link', { name: 'LivT Walletで支払う' }).click()
+  await expect(page).toHaveURL(
+    new URL(`/?payment_id=${paymentId}`, browserEnvironment.walletUrl).href,
+  )
+  await page
+    .getByLabel('パスワード', { exact: true })
+    .fill(browserEnvironment.walletPassword)
+  await page.getByRole('button', { name: 'ウォレットを解除' }).click()
+  await expect(page.locator('#wallet-password')).toHaveCount(0, {
+    timeout: 15_000,
+  })
+}
+
+async function expectAuthoritativePaymentDetails(
+  page: Page,
+  amount: string = paymentFixtures.amount,
+): Promise<void> {
   const details = page.locator('.payment-request-details')
   await expect(details).toContainText(paymentFixtures.storeName)
-  await expect(details).toContainText(`${paymentFixtures.amount} JPYC`)
+  await expect(details).toContainText(`${amount} JPYC`)
   await expect(details).toContainText('Kaia Kairos')
   await expect(details).toContainText('1001')
   await expect(details).toContainText(paymentFixtures.tokenAddress)
   await expect(details).toContainText(paymentFixtures.recipientAddress)
+}
+
+async function submitPayment(page: Page): Promise<void> {
+  await page
+    .getByLabel('送金確認用Walletパスワード')
+    .fill(browserEnvironment.walletPassword)
+  await page.getByRole('button', { name: '内容を確認してJPYCを送る' }).click()
 }
 
 async function loginToLivt(page: Page): Promise<void> {

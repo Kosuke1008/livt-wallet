@@ -15,6 +15,8 @@ describe('App', () => {
 
     expect(markup).toContain('LivT Wallet')
     expect(markup).toContain('ウォレットを作成して暗号化')
+    expect(markup).toContain('暗号化バックアップから復元')
+    expect(markup).toContain('type="file"')
     expect(markup).toContain('type="password"')
     expect(markup).not.toContain('JPYC残高')
   })

@@ -10,6 +10,7 @@ const pilot = {
   user_id: 1,
   merchant_address: merchant,
   sender_address: sender,
+  max_payment_jpyc: '125',
 }
 
 const details: LivtPaymentDetails = {
@@ -40,12 +41,18 @@ describe('Mainnet pilot payment intent', () => {
   })
   afterEach(() => vi.unstubAllEnvs())
 
-  it('exact approved 1 JPYC snapshotを受け付けるがexecution gateは閉じたまま', async () => {
+  it('configured maximum以下の可変金額snapshotを受け付けるがexecution gateは閉じたまま', async () => {
     const { createLivtPaymentIntent } = await import('../../../src/payments/livtPaymentIntent')
     const { ACTIVE_NETWORK_PROFILE } = await import('../../../src/blockchain/networkProfiles')
-    expect(createLivtPaymentIntent({ requestedPaymentId: '42', details, sender,
-      availableBalance: 2_000_000_000_000_000_000n, now: new Date('2026-09-09T00:00:00Z') }).intent.rawAmount)
-      .toBe(1_000_000_000_000_000_000n)
+    const variableDetails = {
+      ...details,
+      amount: 125,
+      display_amount: '125',
+      atomic_amount: '125000000000000000000',
+    }
+    expect(createLivtPaymentIntent({ requestedPaymentId: '42', details: variableDetails, sender,
+      availableBalance: 126_000_000_000_000_000_000n, now: new Date('2026-09-09T00:00:00Z') }).intent.rawAmount)
+      .toBe(125_000_000_000_000_000_000n)
     expect(ACTIVE_NETWORK_PROFILE.paymentExecutionEnabled).toBe(false)
     expect(ACTIVE_NETWORK_PROFILE.feeDelegationExecutionEnabled).toBe(false)
   })
@@ -56,7 +63,7 @@ describe('Mainnet pilot payment intent', () => {
     { mainnet_pilot: { ...pilot, payment_id: 43 } },
     { mainnet_pilot: { ...pilot, sender_address: merchant } },
     { mainnet_pilot: { ...pilot, merchant_address: sender } },
-    { amount: 2, display_amount: '2', atomic_amount: '2000000000000000000' },
+    { amount: 126, display_amount: '126', atomic_amount: '126000000000000000000' },
   ])('approval/snapshot driftを署名前に拒否する', async (override) => {
     const { createLivtPaymentIntent, MainnetPilotApprovalMismatchError } =
       await import('../../../src/payments/livtPaymentIntent')

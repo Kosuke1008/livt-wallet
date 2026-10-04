@@ -126,6 +126,29 @@ describe('LivT payment API client', () => {
     ).resolves.toBe(false)
   })
 
+  it('read-only capability確認は遅いMainnet preflightを30秒まで待つ', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn<typeof fetch>((_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      }),
+    )
+    const client = createLivtPaymentApiClient(
+      new URL('https://livt.example.test/'),
+      fetchMock,
+    )
+    const request = client.getPaymentSponsorshipAvailability('42')
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(15_000)
+    await expect(request).resolves.toBe(false)
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+  })
+
   it('normalized txHashだけを既存confirm endpointへBearerで送る', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({ success: true }),
@@ -283,6 +306,7 @@ describe('LivT payment API client', () => {
         user_id: 1,
         merchant_address: paymentDetails.recipient_address,
         sender_address: '0x3333333333333333333333333333333333333333',
+        max_payment_jpyc: '1',
       },
     }
     const good = createLivtPaymentApiClient(

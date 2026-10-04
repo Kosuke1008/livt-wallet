@@ -14,6 +14,7 @@ const mainnetPilotSchema = z
     user_id: z.number().int().positive().safe(),
     merchant_address: z.string().regex(evmAddressPattern),
     sender_address: z.string().regex(evmAddressPattern),
+    max_payment_jpyc: z.string().regex(/^[1-9]\d*$/),
   })
   .strict()
 
@@ -238,6 +239,7 @@ export function createLivtPaymentApiClient(
             credentials: 'omit',
             referrerPolicy: 'no-referrer',
           },
+          { timeoutMilliseconds: 30_000 },
         )
       } catch {
         return false

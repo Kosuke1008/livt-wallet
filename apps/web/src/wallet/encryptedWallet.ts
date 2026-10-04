@@ -5,29 +5,48 @@ import { createWallet, recoverAddress } from './wallet'
 
 const STORAGE_KEY = 'livt-wallet:encrypted-wallet'
 const PBKDF2_ITERATIONS = 310_000
+const MAX_PBKDF2_ITERATIONS = 2_000_000
 const SALT_BYTES = 16
 const IV_BYTES = 12
+export const MAX_ENCRYPTED_WALLET_BACKUP_BYTES = 16_384
 
-const base64Schema = z.string().min(1).regex(/^[A-Za-z0-9+/]+={0,2}$/)
+const base64Schema = (maximumLength: number) =>
+  z.string().min(1).max(maximumLength).regex(/^[A-Za-z0-9+/]+={0,2}$/)
 
 export const encryptedWalletSchema = z //ブラウザに保存する定義
   .object({
     version: z.literal(1),
     address: evmAddressSchema,
-    ciphertext: base64Schema,
-    iv: base64Schema,
-    salt: base64Schema,
+    ciphertext: base64Schema(4_096),
+    iv: base64Schema(64),
+    salt: base64Schema(64),
     kdf: z
       .object({
         name: z.literal('PBKDF2'),
         hash: z.literal('SHA-256'),
-        iterations: z.number().int().min(100_000),
+        iterations: z
+          .number()
+          .int()
+          .min(100_000)
+          .max(MAX_PBKDF2_ITERATIONS),
       })
       .strict(),
   })
   .strict()
 
 export type EncryptedWallet = z.infer<typeof encryptedWalletSchema>
+
+export const encryptedWalletBackupSchema = z
+  .object({
+    format: z.literal('livt-wallet-encrypted-backup'),
+    version: z.literal(1),
+    wallet: encryptedWalletSchema,
+  })
+  .strict()
+
+export type EncryptedWalletBackup = z.infer<
+  typeof encryptedWalletBackupSchema
+>
 
 export type WalletStorage = Pick<Storage, 'getItem' | 'setItem'>
 
@@ -52,6 +71,30 @@ export class InvalidStoredWalletError extends Error {
 
   constructor() {
     super('The stored wallet is malformed or corrupted')
+  }
+}
+
+export class InvalidWalletBackupError extends Error {
+  readonly name = 'InvalidWalletBackupError'
+
+  constructor() {
+    super('The encrypted wallet backup is malformed or corrupted')
+  }
+}
+
+export class WalletAlreadyExistsError extends Error {
+  readonly name = 'WalletAlreadyExistsError'
+
+  constructor() {
+    super('An encrypted wallet already exists')
+  }
+}
+
+export class WalletAddressMismatchError extends Error {
+  readonly name = 'WalletAddressMismatchError'
+
+  constructor() {
+    super('The encrypted wallet address does not match the active wallet')
   }
 }
 
@@ -270,4 +313,64 @@ export async function unlockStoredWalletAddress( //保存済みのwalletを復�
   const mnemonic = await decryptMnemonic(payload, password)
   // 3. Reactへ返す公開アドレスを復元する
   return recoverAddress(mnemonic)
+}
+
+export async function createEncryptedWalletBackup(
+  password: string,
+  expectedAddress: Address,
+  storage: WalletStorage = localStorage,
+): Promise<string> {
+  const payload = loadEncryptedWallet(storage)
+  const mnemonic = await decryptMnemonic(payload, password)
+  const recoveredAddress = recoverAddress(mnemonic)
+
+  if (recoveredAddress !== expectedAddress || payload.address !== expectedAddress) {
+    throw new WalletAddressMismatchError()
+  }
+
+  return JSON.stringify(
+    encryptedWalletBackupSchema.parse({
+      format: 'livt-wallet-encrypted-backup',
+      version: 1,
+      wallet: payload,
+    }),
+  )
+}
+
+export async function restoreEncryptedWalletBackup(
+  serializedBackup: string,
+  password: string,
+  storage: WalletStorage = localStorage,
+): Promise<Address> {
+  if (hasEncryptedWallet(storage)) throw new WalletAlreadyExistsError()
+  if (
+    serializedBackup.length === 0 ||
+    new TextEncoder().encode(serializedBackup).length >
+      MAX_ENCRYPTED_WALLET_BACKUP_BYTES
+  ) {
+    throw new InvalidWalletBackupError()
+  }
+
+  let backup: EncryptedWalletBackup
+  try {
+    backup = encryptedWalletBackupSchema.parse(JSON.parse(serializedBackup))
+  } catch {
+    throw new InvalidWalletBackupError()
+  }
+
+  let address: Address
+  try {
+    const mnemonic = await decryptMnemonic(backup.wallet, password)
+    address = recoverAddress(mnemonic)
+  } catch (error) {
+    if (error instanceof IncorrectPasswordError) throw error
+    throw new InvalidWalletBackupError()
+  }
+
+  // Do not replace an existing wallet if another action wrote one while the
+  // password and backup were being verified.
+  if (hasEncryptedWallet(storage)) throw new WalletAlreadyExistsError()
+  saveEncryptedWallet(backup.wallet, storage)
+
+  return address
 }

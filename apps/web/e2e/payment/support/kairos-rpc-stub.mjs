@@ -16,7 +16,11 @@ const tokenContract = getAddress(
 const expectedRecipient = getAddress(
   '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
 )
-const expectedAmount = 125_000_000_000_000_000_000n
+const expectedAmounts = new Set([
+  125_000_000_000_000_000_000n,
+  2_375_000_000_000_000_000_000n,
+  4_999_000_000_000_000_000_000n,
+])
 const transferTopic =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 const backendReceiptMisses = 10
@@ -150,8 +154,14 @@ async function rpcResult(method, parameters, browserRequest) {
   if (method === 'eth_sendRawTransaction') {
     return recordBroadcast(parameters[0])
   }
+  if (method === 'eth_getTransactionByHash') {
+    return transactionByHash(parameters[0])
+  }
   if (method === 'eth_getTransactionReceipt') {
     return transactionReceipt(parameters[0], browserRequest)
+  }
+  if (method === 'eth_getBlockByNumber') {
+    return blockByNumber(parameters[0])
   }
 
   throw new Error('Unsupported E2E RPC method')
@@ -217,7 +227,7 @@ async function recordBroadcast(serializedTransaction) {
   if (
     transfer.functionName !== 'transfer' ||
     getAddress(transfer.args[0]) !== expectedRecipient ||
-    transfer.args[1] !== expectedAmount
+    !expectedAmounts.has(transfer.args[1])
   ) {
     throw new Error('Unexpected transfer call')
   }
@@ -225,23 +235,40 @@ async function recordBroadcast(serializedTransaction) {
   const transactionHash = keccak256(serializedTransaction)
   const sender = await recoverTransactionAddress({ serializedTransaction })
   state.broadcasts += 1
+  const blockNumber = state.broadcasts
+  const blockHash = `0x${blockNumber.toString(16).padStart(64, '0')}`
+  state.transactions.push({
+    transactionHash,
+    sender,
+    amount: transfer.args[1],
+    blockNumber,
+    blockHash,
+    timestamp: Math.floor(Date.now() / 1000),
+  })
   state.transactionHash = transactionHash
   state.sender = sender
   state.lastTransfer = {
     recipient: expectedRecipient,
-    amount: expectedAmount.toString(),
+    amount: transfer.args[1].toString(),
   }
   return transactionHash
 }
 
-function transactionReceipt(transactionHash, browserRequest) {
-  if (
-    typeof transactionHash !== 'string' ||
-    transactionHash !== state.transactionHash ||
-    state.sender === null
-  ) {
-    return null
+function transactionByHash(transactionHash) {
+  const transaction = findTransaction(transactionHash)
+  if (transaction === null) return null
+
+  return {
+    hash: transaction.transactionHash,
+    blockNumber: toHex(transaction.blockNumber),
+    blockHash: transaction.blockHash,
+    from: transaction.sender,
   }
+}
+
+function transactionReceipt(transactionHash, browserRequest) {
+  const transaction = findTransaction(transactionHash)
+  if (transaction === null) return null
 
   state.receiptReads += 1
   if (browserRequest) {
@@ -256,43 +283,67 @@ function transactionReceipt(transactionHash, browserRequest) {
     }
   }
 
-  return successfulReceipt(transactionHash, state.sender)
+  return successfulReceipt(transaction)
 }
 
-function successfulReceipt(transactionHash, sender) {
-  const blockHash = `0x${'1'.repeat(64)}`
+function successfulReceipt(transaction) {
   const log = {
     address: tokenContract,
-    blockHash,
-    blockNumber: '0x1',
-    data: toHex(expectedAmount, { size: 32 }),
+    blockHash: transaction.blockHash,
+    blockNumber: toHex(transaction.blockNumber),
+    data: toHex(transaction.amount, { size: 32 }),
     logIndex: '0x0',
     removed: false,
     topics: [
       transferTopic,
-      padHex(sender, { size: 32 }),
+      padHex(transaction.sender, { size: 32 }),
       padHex(expectedRecipient, { size: 32 }),
     ],
-    transactionHash,
+    transactionHash: transaction.transactionHash,
     transactionIndex: '0x0',
   }
 
   return {
-    blockHash,
-    blockNumber: '0x1',
+    blockHash: transaction.blockHash,
+    blockNumber: toHex(transaction.blockNumber),
     contractAddress: null,
     cumulativeGasUsed: '0xea60',
     effectiveGasPrice: '0x5d21dba00',
-    from: sender,
+    from: transaction.sender,
     gasUsed: '0xea60',
     logs: [log],
     logsBloom: `0x${'0'.repeat(512)}`,
     status: '0x1',
     to: tokenContract,
-    transactionHash,
+    transactionHash: transaction.transactionHash,
     transactionIndex: '0x0',
     type: '0x0',
   }
+}
+
+function blockByNumber(blockNumberHex) {
+  if (typeof blockNumberHex !== 'string') return null
+  const blockNumber = Number(BigInt(blockNumberHex))
+  const transaction = state.transactions.find(
+    (candidate) => candidate.blockNumber === blockNumber,
+  )
+  if (transaction === undefined) return null
+
+  return {
+    number: toHex(transaction.blockNumber),
+    hash: transaction.blockHash,
+    timestamp: toHex(transaction.timestamp),
+    transactions: [transaction.transactionHash],
+  }
+}
+
+function findTransaction(transactionHash) {
+  if (typeof transactionHash !== 'string') return null
+  return (
+    state.transactions.find(
+      (transaction) => transaction.transactionHash === transactionHash,
+    ) ?? null
+  )
 }
 
 function assertTransferCall(call) {
@@ -304,7 +355,7 @@ function assertTransferCall(call) {
   if (
     transfer.functionName !== 'transfer' ||
     getAddress(transfer.args[0]) !== expectedRecipient ||
-    transfer.args[1] !== expectedAmount
+    !expectedAmounts.has(transfer.args[1])
   ) {
     throw new Error('Unexpected simulated transfer')
   }
@@ -330,6 +381,7 @@ function createState(scenario) {
     transactionHash: null,
     sender: null,
     lastTransfer: null,
+    transactions: [],
   }
 }
 
@@ -347,6 +399,11 @@ function publicState(value) {
     transactionHash: value.transactionHash,
     sender: value.sender,
     lastTransfer: value.lastTransfer,
+    transfers: value.transactions.map((transaction) => ({
+      transactionHash: transaction.transactionHash,
+      recipient: expectedRecipient,
+      amount: transaction.amount.toString(),
+    })),
   }
 }
 

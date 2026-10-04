@@ -4,12 +4,18 @@ export const paymentFixtures = Object.freeze({
   happyPaymentId: 910001,
   recoveryPaymentId: 910002,
   expiredPaymentId: 910003,
+  sequentialFirstPaymentId: 910004,
+  sequentialSecondPaymentId: 910005,
   email: 'browser-payment-e2e@example.test',
   storeName: 'Browser Review Store',
   recipientAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
   tokenAddress: '0xe7c3d8c9a439fede00d2600032d5db0be71c3c29',
   amount: '125',
   atomicAmount: '125000000000000000000',
+  sequentialFirstAmount: '2375',
+  sequentialFirstAtomicAmount: '2375000000000000000000',
+  sequentialSecondAmount: '4999',
+  sequentialSecondAtomicAmount: '4999000000000000000000',
 })
 
 export type RpcScenario = 'happy' | 'receipt-pending-once'
@@ -34,6 +40,11 @@ export interface RpcState {
     readonly recipient: string
     readonly amount: string
   } | null
+  readonly transfers: readonly {
+    readonly transactionHash: string
+    readonly recipient: string
+    readonly amount: string
+  }[]
 }
 
 export const browserEnvironment = Object.freeze({
@@ -244,6 +255,24 @@ function validateRpcState(value: unknown): RpcState {
       typeof (lastTransfer as Record<string, unknown>).amount !== 'string')
   ) {
     throw new Error('Malformed local RPC transfer')
+  }
+
+  if (!Array.isArray(record.transfers)) {
+    throw new Error('Malformed local RPC transfers')
+  }
+  for (const transfer of record.transfers) {
+    if (
+      typeof transfer !== 'object' ||
+      transfer === null ||
+      typeof (transfer as Record<string, unknown>).transactionHash !== 'string' ||
+      !/^0x[0-9a-f]{64}$/.test(
+        (transfer as Record<string, unknown>).transactionHash as string,
+      ) ||
+      typeof (transfer as Record<string, unknown>).recipient !== 'string' ||
+      typeof (transfer as Record<string, unknown>).amount !== 'string'
+    ) {
+      throw new Error('Malformed local RPC transfers')
+    }
   }
 
   return value as RpcState

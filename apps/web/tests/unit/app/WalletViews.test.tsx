@@ -171,11 +171,19 @@ describe('wallet views', () => {
 
   it('設定画面には安全な既存情報だけを表示して戻れる', () => {
     const onBack = vi.fn()
-    const view = render(<SettingsPanel address={address} onBack={onBack} />)
+    const onExportBackup = vi.fn(async () => undefined)
+    const view = render(
+      <SettingsPanel
+        address={address}
+        onBack={onBack}
+        onExportBackup={onExportBackup}
+      />,
+    )
 
     expect(view.textContent).toContain(KAIROS_NETWORK.name)
     expect(view.textContent).toContain(KAIROS_NETWORK.chainId.toString())
     expect(view.textContent).toContain(address)
+    expect(view.textContent).toContain('暗号化バックアップを保存')
     expect(view.textContent).not.toMatch(
       /Mainnet|RPC編集|秘密鍵|シードフレーズ|トークン追加|NFT|スワップ/,
     )

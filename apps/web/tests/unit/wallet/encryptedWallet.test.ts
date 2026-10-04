@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { toHex } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import {
+  createEncryptedWalletBackup,
   decryptMnemonic,
   encryptMnemonic,
+  hasEncryptedWallet,
   IncorrectPasswordError,
   InvalidStoredWalletError,
+  InvalidWalletBackupError,
+  restoreEncryptedWalletBackup,
+  saveEncryptedWallet,
+  WalletAddressMismatchError,
+  WalletAlreadyExistsError,
+  type WalletStorage,
 } from '../../../src/wallet/encryptedWallet'
 import { recoverAddress } from '../../../src/wallet/wallet'
 
@@ -70,4 +78,117 @@ describe('encrypted wallet cryptography', () => {
       decryptMnemonic(malformed as never, 'password'),
     ).rejects.toThrow(InvalidStoredWalletError)
   })
+
+  it('暗号文だけをversion付きbackupとしてexportして別storageへ復元する', async () => {
+    const source = createStorage()
+    const target = createStorage()
+    const payload = await encryptMnemonic(mnemonic, 'backup-password')
+    saveEncryptedWallet(payload, source)
+
+    const backup = await createEncryptedWalletBackup(
+      'backup-password',
+      payload.address,
+      source,
+    )
+    const restoredAddress = await restoreEncryptedWalletBackup(
+      backup,
+      'backup-password',
+      target,
+    )
+
+    expect(restoredAddress).toBe(payload.address)
+    expect(hasEncryptedWallet(target)).toBe(true)
+    expect(backup).not.toContain(mnemonic)
+    expect(backup).toContain('livt-wallet-encrypted-backup')
+  })
+
+  it('export時に現在のWallet addressと一致しない保存データを拒否する', async () => {
+    const storage = createStorage()
+    const payload = await encryptMnemonic(mnemonic, 'backup-password')
+    saveEncryptedWallet(payload, storage)
+
+    await expect(
+      createEncryptedWalletBackup(
+        'backup-password',
+        '0x0000000000000000000000000000000000000001',
+        storage,
+      ),
+    ).rejects.toThrow(WalletAddressMismatchError)
+  })
+
+  it('誤passwordや改ざんbackupではstorageへ何も保存しない', async () => {
+    const source = createStorage()
+    const target = createStorage()
+    const payload = await encryptMnemonic(mnemonic, 'backup-password')
+    saveEncryptedWallet(payload, source)
+    const backup = await createEncryptedWalletBackup(
+      'backup-password',
+      payload.address,
+      source,
+    )
+
+    await expect(
+      restoreEncryptedWalletBackup(backup, 'wrong-password', target),
+    ).rejects.toThrow(IncorrectPasswordError)
+    expect(hasEncryptedWallet(target)).toBe(false)
+
+    const parsed = JSON.parse(backup) as {
+      wallet: { address: string }
+    }
+    parsed.wallet.address = '0x0000000000000000000000000000000000000001'
+    await expect(
+      restoreEncryptedWalletBackup(
+        JSON.stringify(parsed),
+        'backup-password',
+        target,
+      ),
+    ).rejects.toThrow(InvalidWalletBackupError)
+    expect(hasEncryptedWallet(target)).toBe(false)
+  })
+
+  it('既存Walletをbackup importで上書きしない', async () => {
+    const source = createStorage()
+    const target = createStorage()
+    const payload = await encryptMnemonic(mnemonic, 'backup-password')
+    saveEncryptedWallet(payload, source)
+    saveEncryptedWallet(payload, target)
+    const backup = await createEncryptedWalletBackup(
+      'backup-password',
+      payload.address,
+      source,
+    )
+
+    await expect(
+      restoreEncryptedWalletBackup(backup, 'backup-password', target),
+    ).rejects.toThrow(WalletAlreadyExistsError)
+  })
+
+  it('巨大または余分なfieldを持つbackupを復号前に拒否する', async () => {
+    const storage = createStorage()
+
+    await expect(
+      restoreEncryptedWalletBackup('x'.repeat(16_385), 'password', storage),
+    ).rejects.toThrow(InvalidWalletBackupError)
+    await expect(
+      restoreEncryptedWalletBackup(
+        JSON.stringify({
+          format: 'livt-wallet-encrypted-backup',
+          version: 1,
+          wallet: {},
+          unexpected: true,
+        }),
+        'password',
+        storage,
+      ),
+    ).rejects.toThrow(InvalidWalletBackupError)
+  })
 })
+
+function createStorage(): WalletStorage {
+  const values = new Map<string, string>()
+
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  }
+}

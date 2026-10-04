@@ -16,10 +16,15 @@ import {
 } from '../tokens/tokenMetadata'
 import { approvedJpycToken } from '../tokens/tokenRegistry'
 import {
+  createEncryptedWalletBackup,
   createAndSaveWallet,
   hasEncryptedWallet,
   IncorrectPasswordError,
+  InvalidWalletBackupError,
+  MAX_ENCRYPTED_WALLET_BACKUP_BYTES,
+  restoreEncryptedWalletBackup,
   unlockStoredWalletAddress,
+  WalletAlreadyExistsError,
 } from '../wallet/encryptedWallet'
 import {
   createLivtPaymentApiClient,
@@ -60,6 +65,10 @@ export function App() {
   )
   const [error, setError] = useState<string | null>(null)
   const [isWorking, setIsWorking] = useState(false)
+  const [backupFile, setBackupFile] = useState<File | null>(null)
+  const [restorePassword, setRestorePassword] = useState('')
+  const [restoreError, setRestoreError] = useState<string | null>(null)
+  const [isRestoring, setIsRestoring] = useState(false)
   const [balanceInPeb, setBalanceInPeb] = useState<bigint | null>(null)
   const [isBalanceLoading, setIsBalanceLoading] = useState(false)
   const [balanceError, setBalanceError] = useState<string | null>(null)
@@ -176,6 +185,63 @@ export function App() {
     }
   }
 
+  const handleRestore = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (backupFile === null) return
+    setRestoreError(null)
+    setIsRestoring(true)
+
+    try {
+      if (backupFile.size > MAX_ENCRYPTED_WALLET_BACKUP_BYTES) {
+        throw new InvalidWalletBackupError()
+      }
+      const walletAddress = await restoreEncryptedWalletBackup(
+        await backupFile.text(),
+        restorePassword,
+      )
+      setAddress(walletAddress)
+      setWalletExists(true)
+      setBackupFile(null)
+      setRestorePassword('')
+      setActiveView(paymentIntegration.requested ? 'payment' : 'home')
+      await refreshBalances(walletAddress)
+    } catch (caughtError) {
+      setRestoreError(
+        caughtError instanceof IncorrectPasswordError
+          ? 'パスワードが正しくありません'
+          : caughtError instanceof WalletAlreadyExistsError
+            ? '既存のウォレットがあるため復元できません'
+            : caughtError instanceof InvalidWalletBackupError
+              ? 'バックアップが壊れているか形式が正しくありません'
+              : 'バックアップを復元できませんでした',
+      )
+    } finally {
+      setIsRestoring(false)
+    }
+  }
+
+  const handleExportBackup = async (backupPassword: string) => {
+    if (address === null) throw new Error('Wallet is locked')
+    const serialized = await createEncryptedWalletBackup(
+      backupPassword,
+      address,
+    )
+    const blobUrl = URL.createObjectURL(
+      new Blob([serialized], { type: 'application/json' }),
+    )
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = `livt-wallet-backup-${address.slice(2, 10)}.json`
+    link.rel = 'noopener'
+    document.body.append(link)
+    try {
+      link.click()
+    } finally {
+      link.remove()
+      URL.revokeObjectURL(blobUrl)
+    }
+  }
+
   // 画面切替は表示状態だけを変更し、同じウォレットを使い続ける
   return (
     <main className="shell">
@@ -215,6 +281,44 @@ export function App() {
               </button>
             </form>
             {error && <p role="alert">{error}</p>}
+            {!walletExists && (
+              <section aria-labelledby="restore-title">
+                <h3 id="restore-title">暗号化バックアップから復元</h3>
+                <p>
+                  LivT Walletが作成したJSONファイルと、そのWalletパスワードを使用します。
+                </p>
+                <form onSubmit={handleRestore}>
+                  <label htmlFor="wallet-backup-file">バックアップファイル</label>
+                  <input
+                    id="wallet-backup-file"
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(event) =>
+                      setBackupFile(event.target.files?.[0] ?? null)
+                    }
+                    required
+                  />
+                  <label htmlFor="restore-wallet-password">
+                    バックアップのWalletパスワード
+                  </label>
+                  <input
+                    id="restore-wallet-password"
+                    type="password"
+                    value={restorePassword}
+                    onChange={(event) => setRestorePassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={isRestoring || backupFile === null}
+                  >
+                    暗号化バックアップを復元
+                  </button>
+                </form>
+                {restoreError && <p role="alert">{restoreError}</p>}
+              </section>
+            )}
           </section>
         ) : (
           <>
@@ -251,6 +355,7 @@ export function App() {
               <SettingsPanel
                 address={address}
                 onBack={() => setActiveView('home')}
+                onExportBackup={handleExportBackup}
               />
             )}
 

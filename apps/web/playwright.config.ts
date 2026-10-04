@@ -17,8 +17,14 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'corepack pnpm exec vite preview --host 127.0.0.1',
+    command:
+      'corepack pnpm exec vite build --mode test && corepack pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
+    env: {
+      VITE_BLOCKCHAIN_NETWORK: 'kairos',
+      VITE_BLOCKCHAIN_KAIROS_RPC_URL:
+        'https://public-en-kairos.node.kaia.io',
+    },
   },
 })

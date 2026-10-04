@@ -30,6 +30,7 @@ const details: LivtPaymentDetails = {
     user_id: 7,
     merchant_address: merchant,
     sender_address: sender,
+    max_payment_jpyc: '1',
   },
   expires_at: '2026-09-15 01:00:00',
   expires_at_iso: '2026-09-15T01:00:00Z',

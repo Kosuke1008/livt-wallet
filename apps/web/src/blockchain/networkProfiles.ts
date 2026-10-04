@@ -213,6 +213,6 @@ function validateBooleanFlag(value: unknown): void {
 // The pre-profile Wallet always used Kairos. Keep that safe development
 // default during migration, while pure configuration resolution stays strict.
 export const ACTIVE_NETWORK_PROFILE = resolveNetworkProfile(
-  import.meta.env as NetworkEnvironment,
+  (import.meta.env ?? {}) as NetworkEnvironment,
   { allowKairosDefault: true },
 )

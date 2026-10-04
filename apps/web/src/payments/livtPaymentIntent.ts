@@ -126,8 +126,7 @@ export function createLivtPaymentIntent(input: {
       pilot.payment_id !== input.details.id ||
       merchant !== normalizeEvmAddress(input.details.recipient_address) ||
       approvedSender !== normalizeEvmAddress(input.sender) ||
-      input.details.display_amount !== '1' ||
-      input.details.atomic_amount !== '1000000000000000000'
+      BigInt(input.details.display_amount) > BigInt(pilot.max_payment_jpyc)
     ) {
       throw new MainnetPilotApprovalMismatchError()
     }

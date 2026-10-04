@@ -187,7 +187,7 @@ const transferRecipient = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
 
 async function createAndUnlockWallet(page: Page): Promise<string> {
   await page.goto('/')
-  await page.getByLabel('パスワード').fill(transferPassword)
+  await page.getByLabel('パスワード', { exact: true }).fill(transferPassword)
   await page
     .getByRole('button', { name: 'ウォレットを作成して暗号化' })
     .click()
@@ -226,7 +226,7 @@ test('暗号化して保存し、再読み込み後に復号できる', async ({
   )
   await expect(page.getByText(/Mainnet/i)).toHaveCount(0)
   await expect(page.locator('input[type="text"]')).toHaveCount(0)
-  await page.getByLabel('パスワード').fill('e2e-test-password')
+  await page.getByLabel('パスワード', { exact: true }).fill('e2e-test-password')
   await page
     .getByRole('button', { name: 'ウォレットを作成して暗号化' })
     .click()
@@ -243,11 +243,11 @@ test('暗号化して保存し、再読み込み後に復号できる', async ({
   await page.reload()
   await expect(page.getByRole('button', { name: 'ウォレットを解除' })).toBeVisible()
   await expect(page.getByLabel('ウォレットアドレス値')).not.toBeVisible()
-  await page.getByLabel('パスワード').fill('wrong-password')
+  await page.getByLabel('パスワード', { exact: true }).fill('wrong-password')
   await page.getByRole('button', { name: 'ウォレットを解除' }).click()
   await expect(page.getByRole('alert')).toHaveText('パスワードが正しくありません')
 
-  await page.getByLabel('パスワード').fill('e2e-test-password')
+  await page.getByLabel('パスワード', { exact: true }).fill('e2e-test-password')
   await page.getByRole('button', { name: 'ウォレットを解除' }).click()
   await expect(page.getByLabel('ウォレットアドレス値')).toHaveAttribute(
     'title',
@@ -257,10 +257,42 @@ test('暗号化して保存し、再読み込み後に復号できる', async ({
   await expect(page.getByLabel('JPYC残高値')).toHaveText('9000 JPYC')
 })
 
+test('暗号化backupを保存し、空のbrowser storageへ同じaddressを復元する', async ({
+  page,
+}) => {
+  await mockKairosRpc(page)
+  const originalAddress = await createAndUnlockWallet(page)
+
+  await page.getByRole('button', { name: 'Open settings' }).click()
+  await page.getByLabel('Walletパスワードを再入力').fill(transferPassword)
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '暗号化バックアップを保存' }).click()
+  const download = await downloadPromise
+  const backupPath = await download.path()
+  if (backupPath === null) throw new Error('Backup download is unavailable')
+
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByLabel('バックアップファイル').setInputFiles(backupPath)
+  await page.getByLabel('バックアップのWalletパスワード').fill('wrong-password')
+  await page.getByRole('button', { name: '暗号化バックアップを復元' }).click()
+  await expect(page.getByRole('alert')).toHaveText('パスワードが正しくありません')
+  expect(
+    await page.evaluate(() => localStorage.getItem('livt-wallet:encrypted-wallet')),
+  ).toBeNull()
+
+  await page.getByLabel('バックアップのWalletパスワード').fill(transferPassword)
+  await page.getByRole('button', { name: '暗号化バックアップを復元' }).click()
+  await expect(page.getByLabel('ウォレットアドレス値')).toHaveAttribute(
+    'title',
+    originalAddress,
+  )
+})
+
 test('Kairos RPC障害を表示して再試行できる', async ({ page }) => {
   await mockKairosRpc(page, { failNative: true })
   await page.goto('/')
-  await page.getByLabel('パスワード').fill('e2e-test-password')
+  await page.getByLabel('パスワード', { exact: true }).fill('e2e-test-password')
   await page
     .getByRole('button', { name: 'ウォレットを作成して暗号化' })
     .click()
@@ -276,7 +308,7 @@ test('Kairos RPC障害を表示して再試行できる', async ({ page }) => {
 test('zero JPYC balanceを0として表示する', async ({ page }) => {
   await mockKairosRpc(page, { tokenBalance: 0n })
   await page.goto('/')
-  await page.getByLabel('パスワード').fill('e2e-test-password')
+  await page.getByLabel('パスワード', { exact: true }).fill('e2e-test-password')
   await page
     .getByRole('button', { name: 'ウォレットを作成して暗号化' })
     .click()
@@ -288,7 +320,7 @@ test('zero JPYC balanceを0として表示する', async ({ page }) => {
 test('JPYC RPC障害をnative KAIAと独立して再試行表示する', async ({ page }) => {
   await mockKairosRpc(page, { failToken: true })
   await page.goto('/')
-  await page.getByLabel('パスワード').fill('e2e-test-password')
+  await page.getByLabel('パスワード', { exact: true }).fill('e2e-test-password')
   await page
     .getByRole('button', { name: 'ウォレットを作成して暗号化' })
     .click()
@@ -511,7 +543,7 @@ test('送金画面は既存フォームを開き、未送信のままホーム�
   expect(rpc.tokenBalanceReads).toBe(tokenBalanceReads)
 })
 
-test('設定画面はKairosの読み取り情報だけを表示しホームに戻れる', async ({
+test('設定画面はKairos情報と暗号化backup操作だけを表示しホームに戻れる', async ({
   page,
 }) => {
   await mockKairosRpc(page)
@@ -526,7 +558,11 @@ test('設定画面はKairosの読み取り情報だけを表示しホームに�
   ).toBeVisible()
   await expect(settingsView.getByText('1001', { exact: true })).toBeVisible()
   await expect(page.getByText(/Mainnet/i)).toHaveCount(0)
-  await expect(page.locator('input')).toHaveCount(0)
+  await expect(page.getByLabel('Walletパスワードを再入力')).toHaveAttribute(
+    'type',
+    'password',
+  )
+  await expect(page.locator('input[type="text"]')).toHaveCount(0)
   await page.getByRole('button', { name: 'Back to wallet' }).click()
   await expect(page.getByRole('button', { name: 'Open settings' })).toBeVisible()
 })
