@@ -74,7 +74,9 @@ Wallet作成時に12単語のBIP39 mnemonicをブラウザ内で生成します�
 
 password、平文mnemonic、private keyは保存payloadへ含めません。復号後は保存addressとの一致を再確認します。
 
-ただし、現在はブラウザlocalStorage依存です。別ブラウザ・別端末・別profileへ自動同期されません。また、mnemonicのexport/importや安全なbackup/recovery UIは未実装です。ブラウザデータを失うと、現在のUIだけでは復元できません。この制約を解消するまでは一般利用向けの完成したaccount recoveryとはみなせません。
+設定画面から、保存済みAES-GCM暗号文をversion付きJSONとしてdownloadできます。export前に現在のWallet passwordと解除中addressを再検証します。新規状態のWalletでは、このJSONと元のpasswordから復元できます。importは形式、サイズ、KDF上限、AES-GCM認証、復元addressをすべて検証してからlocalStorageへ保存し、既存Walletは上書きしません。
+
+backupにも平文mnemonicやprivate keyは含まれず、Laravelなどのbackendへ送信しません。cloud同期は行わないため、利用者自身がbackupファイルとpasswordを別々に安全に保管する必要があります。両方を失った場合は復元できません。
 
 ## LivTとの決済フロー
 
@@ -223,18 +225,18 @@ READMEはMainnet実行手順書ではありません。実行時はLivT側のレ
 
 ## 現在の制約
 
-- browser localStorage依存で、別端末への同期はない
-- mnemonic export/import、account recovery、cloud backupは未実装
+- 自動同期・cloud backupはなく、暗号化backupの保管は利用者責任
+- mnemonicやprivate keyを平文表示・exportするrecovery方式は提供しない
 - Google login、passkey、WebAuthn、生体認証は未実装
 - native mobile appは未実装
-- Mainnetは単一pilot allowlistを前提とする
+- Mainnetは単一identity allowlistを前提とする
 - Wallet単体ではFee PayerやLaravelの永続attempt状態を復旧できない
 - 大きなbundleの分割やモバイルUXには改善余地がある
 
 ## Roadmap
 
 - WebAuthn / passkeyとbiometric UX
-- 安全なkey backup / recovery
+- backup password変更とWebAuthn等を使った追加のrecovery保護
 - mobile app
 - Payment attemptのserver-side recovery表示
 - Fee Payer状態とgas sponsor UXの改善
